@@ -31,6 +31,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.ServerName;
@@ -41,6 +42,7 @@ import org.apache.hadoop.hbase.security.User;
 import org.apache.hadoop.hbase.security.UserProvider;
 import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
 import org.apache.hadoop.hbase.util.PoolMap;
+import org.apache.hadoop.hbase.util.ReflectionUtils;
 import org.apache.hadoop.hbase.util.Threads;
 import org.apache.hadoop.io.compress.CompressionCodec;
 import org.apache.hadoop.ipc.RemoteException;
@@ -126,6 +128,8 @@ public abstract class AbstractRpcClient<T extends RpcConnection> implements RpcC
   protected final int readTO;
   protected final int writeTO;
 
+  protected final UpstreamCaller upstreamCaller;
+
   private final PoolMap<ConnectionId, T> connections;
 
   private final AtomicInteger callIdCnt = new AtomicInteger(0);
@@ -185,6 +189,15 @@ public abstract class AbstractRpcClient<T extends RpcConnection> implements RpcC
         cleanupIdleConnections();
       }
     }, minIdleTimeBeforeClose, minIdleTimeBeforeClose, TimeUnit.MILLISECONDS);
+
+    String className = conf.get(UpstreamCaller.HBASE_UPSTREAM_CALLER);
+    if (StringUtils.isEmpty(className)) {
+      LOG.info("No " + UpstreamCaller.HBASE_UPSTREAM_CALLER + " is set.");
+      this.upstreamCaller = UpstreamCaller.NONE;
+    } else {
+      this.upstreamCaller = ReflectionUtils.instantiateWithCustomCtor(className,
+        null, null);
+    }
 
     if (LOG.isDebugEnabled()) {
       LOG.debug("Codec=" + this.codec + ", compressor=" + this.compressor + ", tcpKeepAlive="
@@ -407,7 +420,7 @@ public abstract class AbstractRpcClient<T extends RpcConnection> implements RpcC
 
     final AtomicInteger counter = concurrentCounterCache.getUnchecked(addr);
     Call call = new Call(nextCallId(), md, param, hrc.cellScanner(), returnType,
-        hrc.getCallTimeout(), hrc.getPriority(), new RpcCallback<Call>() {
+        hrc.getCallTimeout(), hrc.getPriority(), upstreamCaller.getUpstreamCaller().orElse(null), new RpcCallback<Call>() {
           @Override
           public void run(Call call) {
             counter.decrementAndGet();

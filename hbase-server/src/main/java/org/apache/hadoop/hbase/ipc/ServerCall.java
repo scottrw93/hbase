@@ -202,6 +202,14 @@ public abstract class ServerCall<T extends ServerRpcConnection> implements RpcCa
     return this.header.getPriority();
   }
 
+  @Override
+  public Optional<String> getUpstreamCaller() {
+    if (this.header.hasUpstreamCaller()) {
+      return Optional.of(this.header.getUpstreamCaller());
+    }
+    return Optional.empty();
+  }
+
   /*
    * Short string representation without param info because param itself could be huge depends on
    * the payload of a command

@@ -109,9 +109,9 @@ public class CallRunner {
       this.status.setStatus("Setting up call");
       this.status.setConnection(call.getRemoteAddress().getHostAddress(), call.getRemotePort());
       if (RpcServer.LOG.isTraceEnabled()) {
-        Optional<User> remoteUser = call.getRequestUser();
+        Optional<String> requestUserName = call.getRequestUserName();
         RpcServer.LOG.trace(call.toShortString() + " executing as " +
-            (remoteUser.isPresent() ? remoteUser.get().getName() : "NULL principal"));
+            (requestUserName.orElse("NULL principal")));
       }
       Throwable errorThrowable = null;
       String error = null;

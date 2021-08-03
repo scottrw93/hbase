@@ -26,6 +26,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyObject;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
@@ -35,6 +36,8 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.CellScanner;
@@ -48,6 +51,7 @@ import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.io.compress.GzipCodec;
 import org.apache.hadoop.util.StringUtils;
 import org.junit.Test;
+import org.mockito.ArgumentCaptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -153,6 +157,86 @@ public abstract class AbstractTestIPC {
 
   protected abstract AbstractRpcClient<?> createRpcClientRTEDuringConnectionSetup(
       Configuration conf) throws IOException;
+
+  @Test
+  public void testDefaultUpstreamCallerPropagation() throws Exception {
+    UpstreamCallerExtractingRpcScheduler scheduler = new UpstreamCallerExtractingRpcScheduler(CONF, 1);
+    Configuration conf = HBaseConfiguration.create();
+    RpcServer rpcServer = createRpcServer(null, "testRpcServer",
+      Lists.newArrayList(new RpcServer.BlockingServiceAndInterface(
+        SERVICE, null)), new InetSocketAddress("localhost", 0), CONF,
+      scheduler);
+
+    try (AbstractRpcClient<?> client = createRpcClient(conf)) {
+      rpcServer.start();
+      BlockingInterface stub = newBlockingStub(client, rpcServer.getListenerAddress());
+      stub.echo(null, EchoRequestProto.newBuilder().setMessage("hello").build());
+
+      RpcCall rpcCall = scheduler.getCall().get();
+
+      assertNotNull(rpcCall);
+      assertFalse(rpcCall.getUpstreamCaller().isPresent());
+      assertTrue(rpcCall.getRequestUserName().isPresent());
+      assertFalse(rpcCall.getRequestUserName().get().contains(".via."));
+    } finally {
+      rpcServer.stop();
+    }
+  }
+
+  @Test
+  public void testCustomUpstreamCallerPropagation() throws Exception {
+    UpstreamCallerExtractingRpcScheduler scheduler = new UpstreamCallerExtractingRpcScheduler(CONF, 1);
+    Configuration conf = HBaseConfiguration.create();
+    conf.set(UpstreamCaller.HBASE_UPSTREAM_CALLER, TestUpstreamCaller.class.getName());
+
+    RpcServer rpcServer = createRpcServer(null, "testRpcServer",
+      Lists.newArrayList(new RpcServer.BlockingServiceAndInterface(
+        SERVICE, null)), new InetSocketAddress("localhost", 0), CONF,
+      scheduler);
+
+    try (AbstractRpcClient<?> client = createRpcClient(conf)) {
+      rpcServer.start();
+      BlockingInterface stub = newBlockingStub(client, rpcServer.getListenerAddress());
+      stub.echo(null, EchoRequestProto.newBuilder().setMessage("hello").build());
+
+      RpcCall rpcCall = scheduler.getCall().get();
+
+      assertNotNull(rpcCall);
+      assertTrue(rpcCall.getUpstreamCaller().isPresent());
+      assertEquals("test", rpcCall.getUpstreamCaller().get());
+      assertTrue(rpcCall.getRequestUserName().isPresent());
+      assertTrue(rpcCall.getRequestUserName().get().matches("test\\.via\\..+"));
+    } finally {
+      rpcServer.stop();
+    }
+  }
+
+  public static class UpstreamCallerExtractingRpcScheduler extends FifoRpcScheduler {
+
+    private AtomicReference<RpcCall> call = new AtomicReference<>(null);
+
+    public UpstreamCallerExtractingRpcScheduler(Configuration conf, int handlerCount) {
+      super(conf, handlerCount);
+    }
+
+    @Override
+    public boolean dispatch(CallRunner task) throws IOException, InterruptedException {
+      call.set(task.getRpcCall());
+      return super.dispatch(task);
+    }
+
+    public AtomicReference<RpcCall> getCall() {
+      return call;
+    }
+  }
+
+  public static class TestUpstreamCaller implements UpstreamCaller {
+
+    @Override
+    public Optional<String> getUpstreamCaller() {
+      return Optional.of("test");
+    }
+  }
 
   @Test
   public void testRTEDuringConnectionSetup() throws Exception {

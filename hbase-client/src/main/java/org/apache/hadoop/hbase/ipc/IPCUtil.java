@@ -126,6 +126,11 @@ class IPCUtil {
     if (call.priority != HConstants.PRIORITY_UNSET) {
       builder.setPriority(call.priority);
     }
+
+    if (call.upstreamCaller != null) {
+      builder.setUpstreamCaller(call.upstreamCaller);
+    }
+
     builder.setTimeout(call.timeout);
 
     return builder.build();

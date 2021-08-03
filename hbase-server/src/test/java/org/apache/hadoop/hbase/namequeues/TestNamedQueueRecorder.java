@@ -705,6 +705,10 @@ public class TestNamedQueueRecorder {
         return getUser(userName);
       }
 
+      @Override public Optional<String> getUpstreamCaller() {
+        return Optional.empty();
+      }
+
       @Override
       public InetAddress getRemoteAddress() {
         return null;

@@ -55,17 +55,18 @@ class Call {
   final Descriptors.MethodDescriptor md;
   final int timeout; // timeout in millisecond for this call; 0 means infinite.
   final int priority;
+  final String upstreamCaller;
   final MetricsConnection.CallStats callStats;
   private final RpcCallback<Call> callback;
   final Span span;
   Timeout timeoutTask;
 
-  protected Call(int id, final Descriptors.MethodDescriptor md, Message param,
-      final CellScanner cells, final Message responseDefaultType, int timeout, int priority,
-      RpcCallback<Call> callback, MetricsConnection.CallStats callStats) {
+  protected Call(int id, final Descriptors.MethodDescriptor md, Message param, final CellScanner cells, final Message responseDefaultType, int timeout, int priority,
+    String upstreamCaller, RpcCallback<Call> callback, MetricsConnection.CallStats callStats) {
     this.param = param;
     this.md = md;
     this.cells = cells;
+    this.upstreamCaller = upstreamCaller;
     this.callStats = callStats;
     this.callStats.setStartTime(EnvironmentEdgeManager.currentTime());
     this.responseDefaultType = responseDefaultType;
