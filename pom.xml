@@ -42,7 +42,7 @@
   <version>2.4.6</version>
   <name>Apache HBase</name>
   <description>
-    Apache HBase is the Hadoop database. Use it when you need
+    Apache HBase is the Hadoop database. Use it when you need
     random, realtime read/write access to your Big Data.
     This project's goal is the hosting of very large tables -- billions of rows X millions of columns -- atop clusters
     of commodity hardware.
