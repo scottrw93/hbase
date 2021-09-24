@@ -16,7 +16,7 @@ DEVELOP_YUM_REPO="6_hs-hbase-develop"
 # At some point it would be good to more closely link this to our hadoop build, but that can only happen
 # once we update our apache-hadoop build to do a full maven. At which point we can probably change this to 
 # like 3.0-hubspot-SNAPSHOT and leave it at that.
-HADOOP_DEP_VERSION="3.2.2"
+HADOOP_DEP_VERSION="3.3.1"
 MAVEN_ARGS="-Phadoop-3.0 -Dhadoop.profile=3.0 -Dhadoop-three.version=$HADOOP_DEP_VERSION -Dgpg.skip=true -DskipTests=true"
 
 #
