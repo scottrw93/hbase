@@ -18,11 +18,19 @@
 package org.apache.hadoop.hbase.master.balancer;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNotSame;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
+import org.apache.hadoop.hbase.ClusterMetrics;
+import org.apache.hadoop.hbase.ClusterMetricsBuilder;
 import org.apache.hadoop.hbase.HBaseClassTestRule;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HDFSBlocksDistribution;
@@ -31,8 +39,10 @@ import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.RegionInfo;
 import org.apache.hadoop.hbase.client.Table;
+import org.apache.hadoop.hbase.protobuf.generated.AdminProtos;
 import org.apache.hadoop.hbase.regionserver.HRegion;
 import org.apache.hadoop.hbase.regionserver.HRegionServer;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.ClusterStatusProtos;
 import org.apache.hadoop.hbase.testclassification.MasterTests;
 import org.apache.hadoop.hbase.testclassification.MediumTests;
 import org.apache.hadoop.hbase.util.Bytes;
@@ -149,6 +159,73 @@ public class TestRegionLocationFinder {
   }
 
   @Test
+  public void testRefreshRegionsWithChangedLocality() throws IOException {
+    HRegion testRegion = findFirstUserRegion();
+    ServerName serverHoldingRegion =
+      cluster.getServerHoldingRegion(tableName, testRegion.getRegionInfo().getRegionName());
+
+    HDFSBlocksDistribution existingDistribution = finder.getBlockDistribution(testRegion.getRegionInfo());
+
+    // no change in locality, so cached value should not change
+    ClusterMetrics clusterMetrics = cluster.getMaster().getClusterMetrics();
+    finder.setClusterMetrics(clusterMetrics);
+    assertSame("expected HDFSBlockDistribution to be the same for region "
+        + testRegion.getRegionInfo().getEncodedName(),
+      existingDistribution,
+      finder.getBlockDistribution(testRegion.getRegionInfo()));
+
+    // changed locality, so should change now
+    ClusterMetrics metricsWithChangedLocality = changeLocality(clusterMetrics, serverHoldingRegion, testRegion);
+    finder.setClusterMetrics(metricsWithChangedLocality);
+    assertNotSame("expected HDFSBlockDistribution to have changed for region "
+        + testRegion.getRegionInfo().getEncodedName(),
+      existingDistribution, finder.getBlockDistribution(testRegion.getRegionInfo()));
+  }
+
+  private HRegion findFirstUserRegion() {
+    for (HRegion region : cluster.getRegions(tableName)) {
+      if (!region.getRegionInfo().isMetaRegion()) {
+        return region;
+      }
+    }
+    throw new RuntimeException("Failed to find a user region for table " + tableName);
+  }
+
+  private ClusterMetrics changeLocality(ClusterMetrics clusterMetrics, ServerName serverName, HRegion region) {
+    ClusterStatusProtos.ClusterStatus clusterStatus =
+      ClusterMetricsBuilder.toClusterStatus(clusterMetrics);
+    return ClusterMetricsBuilder.toClusterMetrics(clusterStatus
+      .toBuilder()
+        .clearLiveServers()
+        .addAllLiveServers(clusterStatus.getLiveServersList().stream()
+          .map(liveServerInfo -> {
+            if (liveServerInfo.getServer().getHostName().equals(serverName.getHostname())) {
+              return changeLocality(liveServerInfo, region);
+            }
+            return liveServerInfo;
+          })
+          .collect(Collectors.toList()))
+      .build());
+  }
+
+  private ClusterStatusProtos.LiveServerInfo changeLocality(ClusterStatusProtos.LiveServerInfo serverInfo, HRegion forRegion) {
+    return serverInfo.toBuilder()
+      .setServerLoad(serverInfo.getServerLoad().toBuilder()
+        .clearRegionLoads()
+        .addAllRegionLoads(serverInfo.getServerLoad().getRegionLoadsList().stream()
+          .map(regionLoad -> {
+            byte[] regionName = regionLoad.getRegionSpecifier().getValue().toByteArray();
+            if (Arrays.equals(regionName, forRegion.getRegionInfo().getRegionName())) {
+              return regionLoad.toBuilder()
+                .setDataLocality(regionLoad.getDataLocality() + 0.1f)
+                .build();
+            }
+            return regionLoad;
+          }).collect(Collectors.toList())))
+      .build();
+  }
+
+  @Test
   public void testRefreshAndWait() throws Exception {
     finder.getCache().invalidateAll();
     for (int i = 0; i < ServerNum; i++) {
@@ -166,5 +243,7 @@ public class TestRegionLocationFinder {
         assertNotNull(finder.getCache().getIfPresent(regionInfo));
       }
     }
+
+
   }
 }

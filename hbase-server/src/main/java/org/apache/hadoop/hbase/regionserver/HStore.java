@@ -2379,6 +2379,30 @@ public class HStore implements Store, HeapSize, StoreConfigInformation,
     return new StoreFlusherImpl(cacheFlushId, tracker);
   }
 
+  /**
+   * Refreshes the HDFSBlockDistribution for StoreFiles in the Store.
+   * If fullRefresh is true, refreshes all StoreFiles. Otherwise only refreshes
+   * those StoreFiles whose locality is less than 100%.
+   * @param hostname hostname used to calculate locality
+   * @param fullRefresh if true, refresh all store files. otherwise just non-local storefiles
+   */
+  void refreshHDFSBlockDistributions(String hostname, boolean fullRefresh) throws IOException {
+    for (HStoreFile storeFile : getStorefiles()) {
+      if (fullRefresh || shouldRefresh(storeFile, hostname)) {
+        storeFile.getFileInfo().initHDFSBlocksDistribution();
+      }
+    }
+  }
+
+  private boolean shouldRefresh(HStoreFile storeFile, String hostname) {
+    float locality = storeFile.getHDFSBlockDistribution().getBlockLocalityIndex(hostname);
+    if (locality < 1.0f) {
+      LOG.debug("Refreshing locality (current value {}) for {}",  locality, storeFile);
+      return true;
+    }
+    return false;
+  }
+
   private final class StoreFlusherImpl implements StoreFlushContext {
 
     private final FlushLifeCycleTracker tracker;

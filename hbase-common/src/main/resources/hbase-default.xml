@@ -2033,4 +2033,24 @@ possible configurations would overwhelm and obscure the important.
       the ring buffer is indicated by config: hbase.master.balancer.rejection.queue.size
     </description>
   </property>
+  <property>
+    <name>hbase.regionserver.locality.refresh.period</name>
+    <value>0</value>
+    <description>
+      Period in millis for LocalityRefreshChore. Re-computes HDFSBlockLocations
+      for reporting on locality of StoreFiles, in case blocks for StoreFiles have moved
+      after the file has been opened. By default, only refreshes StoreFiles whose
+      existing known locality is less than 100%.
+    </description>
+  </property>
+  <property>
+    <name>hbase.regionserver.locality.full.refresh.period</name>
+    <value>0</value>
+    <description>
+      If LocalityRefreshChore is enabled, an additional period at which the chore will do a full
+      refresh of all StoreFile block locations regardless of existing locality. This is useful
+      because there will typically be many more local StoreFiles than non-local, so a full refresh
+      puts more load on the NameNode.
+    </description>
+  </property>
 </configuration>

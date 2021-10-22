@@ -93,7 +93,7 @@ public class StoreFileInfo {
   private final FileSystem fs;
 
   // HDFS blocks distribution information
-  private HDFSBlocksDistribution hdfsBlocksDistribution = null;
+  private volatile HDFSBlocksDistribution hdfsBlocksDistribution = null;
 
   private HFileInfo hfileInfo;
 

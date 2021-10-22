@@ -575,6 +575,9 @@ public class HRegionServer extends Thread implements
   // A timer to shutdown the process if abort takes too long
   private Timer abortMonitor;
 
+  // chore for refreshing region locality metrics, in case blocks move after stores open
+  private LocalityRefreshChore localityRefresher;
+
   /**
    * Starts a HRegionServer at the default location.
    * <p/>
@@ -2072,6 +2075,9 @@ public class HRegionServer extends Thread implements
     if (this.storefileRefresher != null) {
       choreService.scheduleChore(storefileRefresher);
     }
+    if (this.localityRefresher != null) {
+      choreService.scheduleChore(localityRefresher);
+    }
     if (this.fsUtilizationChore != null) {
       choreService.scheduleChore(fsUtilizationChore);
     }
@@ -2157,6 +2163,17 @@ public class HRegionServer extends Thread implements
     if (storefileRefreshPeriod > 0) {
       this.storefileRefresher = new StorefileRefresherChore(storefileRefreshPeriod,
           onlyMetaRefresh, this, this);
+    }
+
+    int localityRefreshPeriod = conf.getInt(
+      LocalityRefreshChore.REGIONSERVER_LOCALITY_REFRESH_PERIOD,
+      LocalityRefreshChore.DEFAULT_REGIONSERVER_LOCALITY_REFRESH_PERIOD);
+    int localityFullRefreshPeriod = conf.getInt(
+      LocalityRefreshChore.REGIONSERVER_LOCALITY_FULL_REFRESH_PERIOD,
+      LocalityRefreshChore.DEFAULT_REGIONSERVER_LOCALITY_FULL_REFRESH_PERIOD);
+    if (localityRefreshPeriod > 0) {
+      this.localityRefresher = new LocalityRefreshChore(localityRefreshPeriod,
+        localityFullRefreshPeriod, this, this);
     }
     registerConfigurationObservers();
   }
@@ -2647,6 +2664,7 @@ public class HRegionServer extends Thread implements
       shutdownChore(periodicFlusher);
       shutdownChore(healthCheckChore);
       shutdownChore(storefileRefresher);
+      shutdownChore(localityRefresher);
       shutdownChore(fsUtilizationChore);
       shutdownChore(slowLogTableOpsChore);
       // cancel the remaining scheduled chores (in case we missed out any)
