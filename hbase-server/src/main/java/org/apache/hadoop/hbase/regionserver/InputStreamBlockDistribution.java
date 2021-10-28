@@ -81,6 +81,9 @@ public class InputStreamBlockDistribution {
       try {
         LOG.debug("Refreshing HDFSBlockDistribution for {}", fileInfo);
         computeBlockDistribution();
+        if (LOG.isTraceEnabled()) {
+          LOG.trace("New HDFSBlockDistribution for {}: {}", fileInfo, printDistribution());
+        }
       } catch (IOException e) {
         LOG.warn("Failed to recompute block distribution for {}, falling back on last known value", fileInfo, e);
       }
@@ -91,5 +94,17 @@ public class InputStreamBlockDistribution {
   private void computeBlockDistribution() throws IOException {
     lastCachedAt = EnvironmentEdgeManager.currentTime();
     hdfsBlocksDistribution = FSUtils.computeHDFSBlocksDistribution(stream);
+  }
+
+  private String printDistribution() {
+    StringBuilder builder = new StringBuilder();
+
+    hdfsBlocksDistribution.getHostAndWeights().values()
+      .forEach(hostAndWeight ->
+        builder.append(", {host=").append(hostAndWeight.getHost())
+          .append(", weight=").append(hostAndWeight.getWeight())
+          .append("}"));
+
+    return builder.substring(2);
   }
 }
