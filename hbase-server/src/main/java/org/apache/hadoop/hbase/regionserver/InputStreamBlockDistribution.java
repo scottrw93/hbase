@@ -17,11 +17,14 @@ package org.apache.hadoop.hbase.regionserver;
 
 import java.io.IOException;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.hbase.HDFSBlocksDistribution;
+import org.apache.hadoop.hbase.io.FileLink;
 import org.apache.hadoop.hbase.util.EnvironmentEdgeManager;
 import org.apache.hadoop.hbase.util.FSUtils;
 import org.apache.hadoop.hdfs.client.HdfsDataInputStream;
 import org.apache.yetus.audience.InterfaceAudience;
+import org.codehaus.stax2.ri.Stax2ReaderAdapter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,20 +46,23 @@ public class InputStreamBlockDistribution {
     "hbase.locality.inputstream.derive.cache.period";
   private static final int DEFAULT_HBASE_LOCALITY_INPUTSTREAM_DERIVE_CACHE_PERIOD = 60_000;
 
-  private final HdfsDataInputStream stream;
+  private final FSDataInputStream stream;
   private final StoreFileInfo fileInfo;
   private final int cachePeriodMs;
 
   private HDFSBlocksDistribution hdfsBlocksDistribution;
   private long lastCachedAt;
+  private boolean streamUnsupported;
 
-  public InputStreamBlockDistribution(HdfsDataInputStream stream, StoreFileInfo fileInfo)
-    throws IOException {
+  public InputStreamBlockDistribution(FSDataInputStream stream, StoreFileInfo fileInfo) {
     this.stream = stream;
     this.fileInfo = fileInfo;
-    this.cachePeriodMs = fileInfo.getConf().getInt(HBASE_LOCALITY_INPUTSTREAM_DERIVE_CACHE_PERIOD,
+    this.cachePeriodMs = fileInfo.getConf().getInt(
+      HBASE_LOCALITY_INPUTSTREAM_DERIVE_CACHE_PERIOD,
       DEFAULT_HBASE_LOCALITY_INPUTSTREAM_DERIVE_CACHE_PERIOD);
-    computeBlockDistribution();
+    this.lastCachedAt = EnvironmentEdgeManager.currentTime();
+    this.streamUnsupported = false;
+    this.hdfsBlocksDistribution = fileInfo.getHDFSBlockDistribution();
   }
 
   /**
@@ -77,7 +83,7 @@ public class InputStreamBlockDistribution {
         LOG.debug("Refreshing HDFSBlockDistribution for {}", fileInfo);
         computeBlockDistribution();
       } catch (IOException e) {
-        LOG.warn("Failed to recompute block distribution for {}, falling back on last known value",
+        LOG.warn("Failed to recompute block distribution for {}. Falling back on cached value.",
           fileInfo, e);
       }
     }
@@ -86,6 +92,25 @@ public class InputStreamBlockDistribution {
 
   private void computeBlockDistribution() throws IOException {
     lastCachedAt = EnvironmentEdgeManager.currentTime();
-    hdfsBlocksDistribution = FSUtils.computeHDFSBlocksDistribution(stream);
+
+    FSDataInputStream stream;
+    if (fileInfo.isLink()) {
+      stream = FileLink.getUnderlyingFileLinkInputStream(this.stream);
+    } else {
+      stream = this.stream;
+    }
+
+    if (!(stream instanceof HdfsDataInputStream)) {
+      if (!streamUnsupported) {
+        LOG.warn("{} for storeFileInfo={}, isLink={}, is not an HdfsDataInputStream so cannot be "
+            + "used to derive locality. Falling back on cached value.",
+          stream, fileInfo, fileInfo.isLink());
+        streamUnsupported = true;
+      }
+      return;
+    }
+
+    streamUnsupported = false;
+    hdfsBlocksDistribution = FSUtils.computeHDFSBlocksDistribution((HdfsDataInputStream) stream);
   }
 }

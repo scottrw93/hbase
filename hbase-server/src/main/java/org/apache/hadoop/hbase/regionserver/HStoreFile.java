@@ -376,9 +376,7 @@ public class HStoreFile implements StoreFile {
     if (InputStreamBlockDistribution.isEnabled(fileInfo.getConf())) {
       boolean useHBaseChecksum = context.getInputStreamWrapper().shouldUseHBaseChecksum();
       FSDataInputStream stream = context.getInputStreamWrapper().getStream(useHBaseChecksum);
-      if (stream instanceof HdfsDataInputStream) {
-        this.initialReaderBlockDistribution = new InputStreamBlockDistribution((HdfsDataInputStream) stream, fileInfo);
-      }
+      this.initialReaderBlockDistribution = new InputStreamBlockDistribution(stream, fileInfo);
     }
 
     // Load up indices and fileinfo. This also loads Bloom filter type.
