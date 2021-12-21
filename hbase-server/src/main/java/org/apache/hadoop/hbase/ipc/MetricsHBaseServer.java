@@ -95,6 +95,11 @@ public class MetricsHBaseServer {
   public void exception(Throwable throwable) {
     source.exception();
 
+    if (LOG.isTraceEnabled()) {
+      throwable.setStackTrace(Thread.currentThread().getStackTrace());
+      LOG.trace("Failed call with exception", throwable);
+    }
+
     /**
      * Keep some metrics for commonly seen exceptions
      *
