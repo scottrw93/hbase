@@ -56,9 +56,9 @@ public class BalancedQueueRpcExecutor extends RpcExecutor {
     int queueIndex = balancer.getNextQueue();
     BlockingQueue<CallRunner> queue = queues.get(queueIndex);
     // that means we can overflow by at most <num reader> size (5), that's ok
-    if (queue.size() >= currentQueueLimit) {
-      return false;
-    }
+//    if (queue.size() >= currentQueueLimit) {
+//      return false;
+//    } // TODO let the queue determine when its full not the executor
     return queue.offer(callTask);
   }
 }
