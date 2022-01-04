@@ -189,7 +189,7 @@ public abstract class ServerCall<T extends ServerRpcConnection> implements RpcCa
   public String toString() {
     return toShortString() + " param: " +
       (this.param != null? ProtobufUtil.getShortTextFormat(this.param): "") +
-      " connection: " + connection.toString();
+      " connection: " + connection.toString() + " user: " + connection.user;
   }
 
   @Override
