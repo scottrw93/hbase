@@ -96,9 +96,9 @@ public class RWQueueRpcExecutor extends RpcExecutor {
     numScanQueues = scanQueues;
     scanHandlersCount = scanHandlers;
 
-    this.writeBalancer = getBalancer(numWriteQueues);
-    this.readBalancer = getBalancer(numReadQueues);
-    this.scanBalancer = numScanQueues > 0 ? getBalancer(numScanQueues) : null;
+    this.writeBalancer = getBalancer(conf, numWriteQueues);
+    this.readBalancer = getBalancer(conf, numReadQueues);
+    this.scanBalancer = numScanQueues > 0 ? getBalancer(conf, numScanQueues) : null;
 
     initializeQueues(numWriteQueues);
     initializeQueues(numReadQueues);
@@ -132,11 +132,11 @@ public class RWQueueRpcExecutor extends RpcExecutor {
     RpcCall call = callTask.getRpcCall();
     int queueIndex;
     if (isWriteRequest(call.getHeader(), call.getParam())) {
-      queueIndex = writeBalancer.getNextQueue();
+      queueIndex = writeBalancer.getNextQueue(callTask);
     } else if (numScanQueues > 0 && isScanRequest(call.getHeader(), call.getParam())) {
-      queueIndex = numWriteQueues + numReadQueues + scanBalancer.getNextQueue();
+      queueIndex = numWriteQueues + numReadQueues + scanBalancer.getNextQueue(callTask);
     } else {
-      queueIndex = numWriteQueues + readBalancer.getNextQueue();
+      queueIndex = numWriteQueues + readBalancer.getNextQueue(callTask);
     }
 
     BlockingQueue<CallRunner> queue = queues.get(queueIndex);
