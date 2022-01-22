@@ -21,7 +21,6 @@ package org.apache.hadoop.hbase.ipc;
 
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.Abortable;
 import org.apache.hadoop.hbase.HBaseInterfaceAudience;
@@ -29,14 +28,14 @@ import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.yetus.audience.InterfaceStability;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.apache.hbase.thirdparty.com.google.protobuf.Message;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ClientProtos.Action;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ClientProtos.MultiRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ClientProtos.MutateRequest;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProtos;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ClientProtos.RegionAction;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ClientProtos.ScanRequest;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.RPCProtos.RequestHeader;
-import org.apache.hbase.thirdparty.com.google.protobuf.Message;
+import org.apache.hadoop.hbase.shaded.protobuf.generated.RegionServerStatusProtos;
 
 /**
  * RPC Executor that uses different queues for reads and writes.
@@ -96,13 +95,16 @@ public class RWQueueRpcExecutor extends RpcExecutor {
     numScanQueues = scanQueues;
     scanHandlersCount = scanHandlers;
 
-    this.writeBalancer = getBalancer(numWriteQueues);
-    this.readBalancer = getBalancer(numReadQueues);
-    this.scanBalancer = numScanQueues > 0 ? getBalancer(numScanQueues) : null;
-
     initializeQueues(numWriteQueues);
     initializeQueues(numReadQueues);
     initializeQueues(numScanQueues);
+
+    this.writeBalancer = getBalancer(conf, queues.subList(0, numWriteQueues));
+    this.readBalancer = getBalancer(conf, queues.subList(numWriteQueues, numWriteQueues + numReadQueues));
+    this.scanBalancer = numScanQueues > 0 ?
+      getBalancer(conf, queues.subList(numWriteQueues + numReadQueues,
+        numWriteQueues + numReadQueues + numScanQueues)) :
+      null;
 
     LOG.info(getName() + " writeQueues=" + numWriteQueues + " writeHandlers=" + writeHandlersCount
       + " readQueues=" + numReadQueues + " readHandlers=" + readHandlersCount + " scanQueues="
@@ -132,11 +134,11 @@ public class RWQueueRpcExecutor extends RpcExecutor {
     RpcCall call = callTask.getRpcCall();
     int queueIndex;
     if (isWriteRequest(call.getHeader(), call.getParam())) {
-      queueIndex = writeBalancer.getNextQueue();
+      queueIndex = writeBalancer.getNextQueue(callTask);
     } else if (numScanQueues > 0 && isScanRequest(call.getHeader(), call.getParam())) {
-      queueIndex = numWriteQueues + numReadQueues + scanBalancer.getNextQueue();
+      queueIndex = numWriteQueues + numReadQueues + scanBalancer.getNextQueue(callTask);
     } else {
-      queueIndex = numWriteQueues + readBalancer.getNextQueue();
+      queueIndex = numWriteQueues + readBalancer.getNextQueue(callTask);
     }
 
     BlockingQueue<CallRunner> queue = queues.get(queueIndex);
@@ -226,6 +228,18 @@ public class RWQueueRpcExecutor extends RpcExecutor {
       return true;
     }
     return false;
+  }
+
+  QueueBalancer getWriteBalancer() {
+    return writeBalancer;
+  }
+
+  QueueBalancer getReadBalancer() {
+    return readBalancer;
+  }
+
+  QueueBalancer getScanBalancer() {
+    return scanBalancer;
   }
 
   private boolean isScanRequest(final RequestHeader header, final Message param) {
