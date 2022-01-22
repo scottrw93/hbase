@@ -395,7 +395,7 @@ public abstract class RpcExecutor {
       return ONE_QUEUE;
     } else {
       Class<?> balancerClass = conf.getClass(CALL_QUEUE_QUEUE_BALANCER_CLASS, CALL_QUEUE_QUEUE_BALANCER_CLASS_DEFAULT);
-      return (QueueBalancer) ReflectionUtils.newInstance(balancerClass, true, conf, queueSize);
+      return (QueueBalancer) ReflectionUtils.newInstance(balancerClass, conf, queueSize);
     }
   }
 
@@ -412,7 +412,7 @@ public abstract class RpcExecutor {
   /**
    * Queue balancer that just randomly selects a queue in the range [0, num queues).
    */
-  private static class RandomQueueBalancer extends QueueBalancer {
+  public static class RandomQueueBalancer extends QueueBalancer {
     private final int queueSize;
 
     public RandomQueueBalancer(Configuration conf, int queueSize) {
