@@ -27,7 +27,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
 import org.apache.hadoop.conf.Configuration;
@@ -382,13 +381,6 @@ public abstract class RpcExecutor {
     }
   }
 
-  public static abstract class QueueBalancer {
-    /**
-     * @return the index of the next queue to which a request should be inserted
-     */
-    public abstract int getNextQueue(CallRunner callRunner);
-  }
-
   public static QueueBalancer getBalancer(Configuration conf, List<BlockingQueue<CallRunner>> queues) {
     Preconditions.checkArgument(queues.size() > 0, "Queue size is <= 0, must be at least 1");
     if (queues.size() == 1) {
@@ -408,22 +400,6 @@ public abstract class RpcExecutor {
       return 0;
     }
   };
-
-  /**
-   * Queue balancer that just randomly selects a queue in the range [0, num queues).
-   */
-  public static class RandomQueueBalancer extends QueueBalancer {
-    private final int queueSize;
-
-    public RandomQueueBalancer(Configuration conf, List<BlockingQueue<CallRunner>> queues) {
-      this.queueSize = queues.size();
-    }
-
-    @Override
-    public int getNextQueue(CallRunner callRunner) {
-      return ThreadLocalRandom.current().nextInt(queueSize);
-    }
-  }
 
   /**
    * Comparator used by the "normal callQueue" if DEADLINE_CALL_QUEUE_CONF_KEY is set to true. It
