@@ -389,13 +389,13 @@ public abstract class RpcExecutor {
     public abstract int getNextQueue(CallRunner callRunner);
   }
 
-  public static QueueBalancer getBalancer(Configuration conf, int queueSize) {
-    Preconditions.checkArgument(queueSize > 0, "Queue size is <= 0, must be at least 1");
-    if (queueSize == 1) {
+  public static QueueBalancer getBalancer(Configuration conf, List<BlockingQueue<CallRunner>> queues) {
+    Preconditions.checkArgument(queues.size() > 0, "Queue size is <= 0, must be at least 1");
+    if (queues.size() == 1) {
       return ONE_QUEUE;
     } else {
       Class<?> balancerClass = conf.getClass(CALL_QUEUE_QUEUE_BALANCER_CLASS, CALL_QUEUE_QUEUE_BALANCER_CLASS_DEFAULT);
-      return (QueueBalancer) ReflectionUtils.newInstance(balancerClass, conf, queueSize);
+      return (QueueBalancer) ReflectionUtils.newInstance(balancerClass, conf, queues);
     }
   }
 
@@ -415,8 +415,8 @@ public abstract class RpcExecutor {
   public static class RandomQueueBalancer extends QueueBalancer {
     private final int queueSize;
 
-    public RandomQueueBalancer(Configuration conf, int queueSize) {
-      this.queueSize = queueSize;
+    public RandomQueueBalancer(Configuration conf, List<BlockingQueue<CallRunner>> queues) {
+      this.queueSize = queues.size();
     }
 
     @Override

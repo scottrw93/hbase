@@ -18,7 +18,6 @@
 package org.apache.hadoop.hbase.ipc;
 
 import java.util.concurrent.BlockingQueue;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.Abortable;
 import org.apache.hadoop.hbase.HBaseInterfaceAudience;
@@ -47,8 +46,8 @@ public class BalancedQueueRpcExecutor extends RpcExecutor {
       final String callQueueType, final int maxQueueLength, final PriorityFunction priority,
       final Configuration conf, final Abortable abortable) {
     super(name, handlerCount, callQueueType, maxQueueLength, priority, conf, abortable);
-    this.balancer = getBalancer(conf, this.numCallQueues);
     initializeQueues(this.numCallQueues);
+    this.balancer = getBalancer(conf, getQueues());
   }
 
   @Override

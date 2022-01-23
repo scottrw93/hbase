@@ -96,13 +96,13 @@ public class RWQueueRpcExecutor extends RpcExecutor {
     numScanQueues = scanQueues;
     scanHandlersCount = scanHandlers;
 
-    this.writeBalancer = getBalancer(conf, numWriteQueues);
-    this.readBalancer = getBalancer(conf, numReadQueues);
-    this.scanBalancer = numScanQueues > 0 ? getBalancer(conf, numScanQueues) : null;
-
     initializeQueues(numWriteQueues);
     initializeQueues(numReadQueues);
     initializeQueues(numScanQueues);
+
+    this.writeBalancer = getBalancer(conf, queues.subList(0, numWriteQueues));
+    this.readBalancer = getBalancer(conf, queues.subList(numWriteQueues, numReadQueues));
+    this.scanBalancer = numScanQueues > 0 ? getBalancer(conf, queues.subList(numReadQueues + numWriteQueues, numScanQueues)) : null;
 
     LOG.info(getName() + " writeQueues=" + numWriteQueues + " writeHandlers=" + writeHandlersCount
       + " readQueues=" + numReadQueues + " readHandlers=" + readHandlersCount + " scanQueues="
