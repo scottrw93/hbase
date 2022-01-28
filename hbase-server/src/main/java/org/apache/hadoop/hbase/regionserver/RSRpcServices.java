@@ -509,6 +509,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
         LOG.warn("Scanner lease {} expired but no outstanding scanner", this.scannerName);
         return;
       }
+      regionServer.getMetrics().decrementActiveScanners();
       LOG.info("Scanner lease {} expired {}", this.scannerName, rsh);
       RegionScanner s = rsh.s;
       HRegion region = null;
@@ -1458,6 +1459,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
     RegionScannerHolder existing = scanners.putIfAbsent(scannerName, rsh);
     assert existing == null : "scannerId must be unique within regionserver's whole lifecycle! " +
       scannerName + ", " + existing;
+    regionServer.getMetrics().incrementActiveScanners();
     return rsh;
   }
 
@@ -3154,6 +3156,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
           + hri.getRegionNameAsString() + ", scannerRegionName=" + rsh.r;
       LOG.warn(msg + ", closing...");
       scanners.remove(scannerName);
+      regionServer.getMetrics().decrementActiveScanners();
       try {
         rsh.s.close();
       } catch (IOException e) {
@@ -3742,6 +3745,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
     }
     RegionScannerHolder rsh = scanners.remove(scannerName);
     if (rsh != null) {
+      regionServer.getMetrics().decrementActiveScanners();
       if (context != null) {
         context.setCallBack(rsh.closeCallBack);
       } else {

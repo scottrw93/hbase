@@ -24,6 +24,8 @@ import org.apache.hadoop.metrics2.MetricHistogram;
 import org.apache.hadoop.metrics2.MetricsCollector;
 import org.apache.hadoop.metrics2.MetricsRecordBuilder;
 import org.apache.hadoop.metrics2.lib.MutableFastCounter;
+import org.apache.hadoop.metrics2.lib.MutableGaugeInt;
+import org.apache.hadoop.metrics2.lib.MutableGaugeLong;
 import org.apache.yetus.audience.InterfaceAudience;
 
 /**
@@ -90,6 +92,9 @@ public class MetricsRegionServerSourceImpl
   private final MutableFastCounter warnPauseThresholdExceeded;
   private final MetricHistogram pausesWithGc;
   private final MetricHistogram pausesWithoutGc;
+
+  // active scan monitoring
+  private final MutableGaugeLong activeScanners;
 
   public MetricsRegionServerSourceImpl(MetricsRegionServerWrapper rsWrap) {
     this(METRICS_NAME, METRICS_DESCRIPTION, METRICS_CONTEXT, METRICS_JMX_CONTEXT, rsWrap);
@@ -179,6 +184,8 @@ public class MetricsRegionServerSourceImpl
       WARN_THRESHOLD_COUNT_DESC, 0L);
     pausesWithGc = getMetricsRegistry().newTimeHistogram(PAUSE_TIME_WITH_GC_KEY);
     pausesWithoutGc = getMetricsRegistry().newTimeHistogram(PAUSE_TIME_WITHOUT_GC_KEY);
+
+    activeScanners = getMetricsRegistry().newGauge(ACTIVE_SCANNERS, ACTIVE_SCANNERS_DESC, 0L);
   }
 
   @Override
@@ -320,6 +327,16 @@ public class MetricsRegionServerSourceImpl
       majorCompactionOutputSizeHisto.add(bytes);
       majorCompactedOutputBytes.incr(bytes);
     }
+  }
+
+  @Override
+  public void incrementActiveScanners() {
+    activeScanners.incr();
+  }
+
+  @Override
+  public void decrementActiveScanners() {
+    activeScanners.decr();
   }
 
   /**

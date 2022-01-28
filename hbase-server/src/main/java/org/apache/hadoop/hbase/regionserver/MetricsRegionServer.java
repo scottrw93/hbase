@@ -300,4 +300,12 @@ public class MetricsRegionServer {
   public void incrementRegionSizeReportingChoreTime(long time) {
     quotaSource.incrementRegionSizeReportingChoreTime(time);
   }
+
+  public void decrementActiveScanners() {
+    serverSource.decrementActiveScanners();
+  }
+
+  public void incrementActiveScanners() {
+    serverSource.incrementActiveScanners();
+  }
 }

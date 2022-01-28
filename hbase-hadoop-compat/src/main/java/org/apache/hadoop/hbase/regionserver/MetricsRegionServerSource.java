@@ -226,6 +226,10 @@ public interface MetricsRegionServerSource extends BaseSource, JvmPauseMonitorSo
    */
   void updateCompactionOutputSize(boolean isMajor, long bytes);
 
+  void incrementActiveScanners();
+
+  void decrementActiveScanners();
+
   // Strings used for exporting to metrics system.
   String REGION_COUNT = "regionCount";
   String REGION_COUNT_DESC = "Number of regions";
@@ -592,4 +596,7 @@ public interface MetricsRegionServerSource extends BaseSource, JvmPauseMonitorSo
   String BYTE_BUFF_ALLOCATOR_TOTAL_BUFFER_COUNT_DESC = "Total buffer count in ByteBuffAllocator";
   String BYTE_BUFF_ALLOCATOR_USED_BUFFER_COUNT = "ByteBuffAllocatorUsedBufferCount";
   String BYTE_BUFF_ALLOCATOR_USED_BUFFER_COUNT_DESC = "Used buffer count in ByteBuffAllocator";
+
+  String ACTIVE_SCANNERS = "activeScanners";
+  String ACTIVE_SCANNERS_DESC = "Number of active scanners being tracked by the RegionServer.";
 }
