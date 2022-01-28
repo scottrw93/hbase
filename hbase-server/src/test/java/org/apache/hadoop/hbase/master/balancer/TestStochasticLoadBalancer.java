@@ -359,13 +359,13 @@ public class TestStochasticLoadBalancer extends BalancerTestBase {
       cluster.setNumRegions(10000);
       cluster.setNumMovedRegions(250);
       cost = costFunction.cost();
-      assertEquals(0.1f, cost, 0.001);
+      assertEquals(0.025f, cost, 0.001);
       cluster.setNumMovedRegions(1250);
       cost = costFunction.cost();
-      assertEquals(0.5f, cost, 0.001);
+      assertEquals(0.125f, cost, 0.001);
       cluster.setNumMovedRegions(2500);
       cost = costFunction.cost();
-      assertEquals(1.0f, cost, 0.01);
+      assertEquals(0.25f, cost, 0.01);
     }
   }
 
@@ -406,10 +406,10 @@ public class TestStochasticLoadBalancer extends BalancerTestBase {
         final double expectedCost = loadBalancer.computeCost(cluster, Double.MAX_VALUE);
         Cluster.Action action = loadBalancer.nextAction(cluster);
         cluster.doAction(action);
-        loadBalancer.updateCostsWithAction(cluster, action);
+        loadBalancer.updateCostsAndWeightsWithAction(cluster, action);
         Cluster.Action undoAction = action.undoAction();
         cluster.doAction(undoAction);
-        loadBalancer.updateCostsWithAction(cluster, undoAction);
+        loadBalancer.updateCostsAndWeightsWithAction(cluster, undoAction);
         final double actualCost = loadBalancer.computeCost(cluster, Double.MAX_VALUE);
         assertEquals(expectedCost, actualCost, 0);
       }

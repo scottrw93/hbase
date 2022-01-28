@@ -127,6 +127,7 @@ import org.apache.hadoop.hbase.client.TableDescriptorBuilder;
 import org.apache.hadoop.hbase.conf.ConfigurationManager;
 import org.apache.hadoop.hbase.conf.PropagatingConfigurationObserver;
 import org.apache.hadoop.hbase.coprocessor.CoprocessorHost;
+import org.apache.hadoop.hbase.coprocessor.ReadOnlyConfiguration;
 import org.apache.hadoop.hbase.errorhandling.ForeignExceptionSnare;
 import org.apache.hadoop.hbase.exceptions.FailedSanityCheckException;
 import org.apache.hadoop.hbase.exceptions.TimeoutIOException;
@@ -1105,8 +1106,8 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
       }
     }
 
-    LOG.info("Opened {}; next sequenceid={}; {}, {}",
-      this.getRegionInfo().getShortNameToLog(), nextSeqId, this.splitPolicy, this.flushPolicy);
+    LOG.info("Opened {}; next sequenceid={}; {}, {}", this.getRegionInfo().getShortNameToLog(),
+        nextSeqId, this.splitPolicy, this.flushPolicy);
 
     // A region can be reopened if failed a split; reset flags
     this.closing.set(false);
@@ -1986,6 +1987,11 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
       LOG.debug("Waited {} ms for region {} flush to complete", duration, this);
       return !(writestate.flushing);
     }
+  }
+
+  @Override
+  public Configuration getReadOnlyConfiguration() {
+    return new ReadOnlyConfiguration(this.conf);
   }
 
   protected ThreadPoolExecutor getStoreOpenAndCloseThreadPool(

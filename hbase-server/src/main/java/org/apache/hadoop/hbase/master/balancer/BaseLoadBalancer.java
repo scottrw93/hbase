@@ -167,12 +167,8 @@ public abstract class BaseLoadBalancer implements LoadBalancer {
     int[]   regionIndexToServerIndex;    //regionIndex -> serverIndex
     int[]   initialRegionIndexToServerIndex;    //regionIndex -> serverIndex (initial cluster state)
     int[]   regionIndexToTableIndex;     //regionIndex -> tableIndex
-    int[][] numRegionsPerServerPerTable; // serverIndex -> tableIndex -> # regions
+    int[][] numRegionsPerServerPerTable; // tableIndex -> serverIndex -> # regions
     int[] numRegionsPerTable; // tableIndex -> region count
-    double[] meanRegionsPerTable; // mean region count per table
-    double[] regionSkewByTable;       // skew on RS per by table
-    double[] minRegionSkewByTable;       // min skew on RS per by table
-    double[] maxRegionSkewByTable;       // max skew on RS per by table
     int[]   regionIndexToPrimaryIndex;   //regionIndex -> regionIndex of the primary
     boolean hasRegionReplicas = false;   //whether there is regions with replicas
 
@@ -338,6 +334,7 @@ public abstract class BaseLoadBalancer implements LoadBalancer {
         racks[entry.getValue()] = entry.getKey();
       }
 
+      LOG.debug("Hosts are {} racks are {}", hostsToIndex, racksToIndex);
       for (Entry<ServerName, List<RegionInfo>> entry : clusterState.entrySet()) {
         int serverIndex = serversToIndex.get(entry.getKey().getAddress());
         regionPerServerIndex = serverIndexToRegionsOffset[serverIndex];
@@ -365,6 +362,7 @@ public abstract class BaseLoadBalancer implements LoadBalancer {
         serversPerHost[i] = new int[serversPerHostList.get(i).size()];
         for (int j = 0; j < serversPerHost[i].length; j++) {
           serversPerHost[i][j] = serversPerHostList.get(i).get(j);
+          LOG.debug("server {} is on host {}",serversPerHostList.get(i).get(j), i);
         }
         if (serversPerHost[i].length > 1) {
           multiServersPerHost = true;
@@ -375,43 +373,26 @@ public abstract class BaseLoadBalancer implements LoadBalancer {
         serversPerRack[i] = new int[serversPerRackList.get(i).size()];
         for (int j = 0; j < serversPerRack[i].length; j++) {
           serversPerRack[i][j] = serversPerRackList.get(i).get(j);
+          LOG.trace("server {} is on rack {}",serversPerRackList.get(i).get(j), i);
         }
       }
 
       numTables = tables.size();
-      LOG.debug("Number of tables={}", numTables);
-      numRegionsPerServerPerTable = new int[numServers][numTables];
+      LOG.debug("Number of tables={}, number of hosts={}, number of racks={}", numTables,
+        numHosts, numRacks);
+      numRegionsPerServerPerTable = new int[numTables][numServers];
       numRegionsPerTable = new int[numTables];
 
-      for (int i = 0; i < numServers; i++) {
-        for (int j = 0; j < numTables; j++) {
+      for (int i = 0; i < numTables; i++) {
+        for (int j = 0; j < numServers; j++) {
           numRegionsPerServerPerTable[i][j] = 0;
         }
       }
 
       for (int i=0; i < regionIndexToServerIndex.length; i++) {
         if (regionIndexToServerIndex[i] >= 0) {
-          numRegionsPerServerPerTable[regionIndexToServerIndex[i]][regionIndexToTableIndex[i]]++;
+          numRegionsPerServerPerTable[regionIndexToTableIndex[i]][regionIndexToServerIndex[i]]++;
           numRegionsPerTable[regionIndexToTableIndex[i]]++;
-        }
-      }
-
-      // Avoid repeated computation for planning
-      meanRegionsPerTable = new double[numTables];
-      regionSkewByTable = new double[numTables];
-      maxRegionSkewByTable  = new double[numTables];
-      minRegionSkewByTable = new double[numTables];
-
-      for (int i = 0; i < numTables; i++) {
-        meanRegionsPerTable[i] = Double.valueOf(numRegionsPerTable[i]) / numServers;
-        minRegionSkewByTable[i] += DoubleArrayCost.getMinSkew(numRegionsPerTable[i], numServers);
-        maxRegionSkewByTable[i] += DoubleArrayCost.getMaxSkew(numRegionsPerTable[i], numServers);
-      }
-
-      for (int[] aNumRegionsPerServerPerTable : numRegionsPerServerPerTable) {
-        for (int tableIdx = 0; tableIdx < aNumRegionsPerServerPerTable.length; tableIdx++) {
-          regionSkewByTable[tableIdx] +=
-            Math.abs(aNumRegionsPerServerPerTable[tableIdx] - meanRegionsPerTable[tableIdx]);
         }
       }
 
@@ -850,15 +831,9 @@ public abstract class BaseLoadBalancer implements LoadBalancer {
       }
       int tableIndex = regionIndexToTableIndex[region];
       if (oldServer >= 0) {
-        numRegionsPerServerPerTable[oldServer][tableIndex]--;
-        // update regionSkewPerTable for the move from old server
-        regionSkewByTable[tableIndex] += getSkewChangeFor(oldServer, tableIndex, -1);
+        numRegionsPerServerPerTable[tableIndex][oldServer]--;
       }
-      numRegionsPerServerPerTable[newServer][tableIndex]++;
-
-      // update regionSkewPerTable for the move to new server
-      regionSkewByTable[tableIndex] += getSkewChangeFor(newServer, tableIndex, 1);
-
+      numRegionsPerServerPerTable[tableIndex][newServer]++;
       // update for servers
       int primary = regionIndexToPrimaryIndex[region];
       if (oldServer >= 0) {
@@ -960,6 +935,10 @@ public abstract class BaseLoadBalancer implements LoadBalancer {
 
     private Comparator<Integer> numRegionsComparator = Comparator.comparingInt(this::getNumRegions);
 
+    public Comparator<Integer> getNumRegionsComparator() {
+      return numRegionsComparator;
+    }
+
     int getLowestLocalityRegionOnServer(int serverIndex) {
       if (regionFinder != null) {
         float lowestLocality = 1.0f;
@@ -1027,19 +1006,10 @@ public abstract class BaseLoadBalancer implements LoadBalancer {
           .append(Arrays.toString(serverIndicesSortedByRegionCount))
           .append(", regionsPerServer=").append(Arrays.deepToString(regionsPerServer));
 
-      desc.append(", regionSkewByTable=").append(Arrays.toString(regionSkewByTable))
-          .append(", numRegions=").append(numRegions).append(", numServers=").append(numServers)
-          .append(", numTables=").append(numTables).append(", numMovedRegions=")
+      desc.append(", numRegions=").append(numRegions).append(", numServers=").append(numServers)
+        .append(", numTables=").append(numTables).append(", numMovedRegions=")
           .append(numMovedRegions).append('}');
       return desc.toString();
-    }
-
-    private double getSkewChangeFor(int serverIndex, int tableIndex, double regionCountChange) {
-      double curSkew = Math.abs(numRegionsPerServerPerTable[serverIndex][tableIndex] -
-        meanRegionsPerTable[tableIndex]);
-      double oldSkew = Math.abs(numRegionsPerServerPerTable[serverIndex][tableIndex] -
-        regionCountChange - meanRegionsPerTable[tableIndex]);
-      return curSkew - oldSkew;
     }
   }
 
@@ -1737,7 +1707,7 @@ public abstract class BaseLoadBalancer implements LoadBalancer {
       });
       return result;
     } else {
-      LOG.info("Start Generate Balance plan for cluster.");
+      LOG.debug("Start Generate Balance plan for cluster.");
       return balanceTable(HConstants.ENSEMBLE_TABLE_NAME, toEnsumbleTableLoad(loadOfAllTable));
     }
   }

@@ -53,7 +53,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.servlet.http.HttpServlet;
-import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataOutputStream;
@@ -222,12 +221,12 @@ import org.slf4j.LoggerFactory;
 import org.apache.hbase.thirdparty.com.google.common.collect.Lists;
 import org.apache.hbase.thirdparty.com.google.common.collect.Maps;
 import org.apache.hbase.thirdparty.com.google.common.collect.Sets;
+import org.apache.hbase.thirdparty.com.google.common.io.Closeables;
 import org.apache.hbase.thirdparty.org.eclipse.jetty.server.Server;
 import org.apache.hbase.thirdparty.org.eclipse.jetty.server.ServerConnector;
 import org.apache.hbase.thirdparty.org.eclipse.jetty.servlet.ServletHolder;
 import org.apache.hbase.thirdparty.org.eclipse.jetty.webapp.WebAppContext;
 
-import org.apache.hadoop.hbase.shaded.protobuf.RequestConverter;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.AdminProtos.GetRegionInfoResponse;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.SnapshotProtos.SnapshotDescription;
 
@@ -823,7 +822,7 @@ public class HMaster extends HRegionServer implements MasterServices {
             HBaseFsck.createLockRetryCounterFactory(this.conf).create());
       } finally {
         if (result != null) {
-          IOUtils.closeQuietly(result.getSecond());
+          Closeables.close(result.getSecond(), true);
         }
       }
     }
@@ -1898,7 +1897,7 @@ public class HMaster extends HRegionServer implements MasterServices {
         }
       }
     }
-    LOG.info("Balancer is going into sleep until next period in {}ms", getConfiguration()
+    LOG.debug("Balancer is going into sleep until next period in {}ms", getConfiguration()
       .getInt(HConstants.HBASE_BALANCER_PERIOD, HConstants.DEFAULT_HBASE_BALANCER_PERIOD));
     return successRegionPlans;
   }

@@ -119,6 +119,9 @@ EOF
       @name = @table.getName.getNameAsString
       @shell = shell
       @converters = {}
+      @timestamp_format_epoch = table.getConfiguration.getBoolean(
+          HConstants::SHELL_TIMESTAMP_FORMAT_EPOCH_KEY,
+          HConstants::DEFAULT_SHELL_TIMESTAMP_FORMAT_EPOCH)
     end
 
     def close
@@ -556,7 +559,7 @@ EOF
         end
 
         scan.setScanMetricsEnabled(enablemetrics) if enablemetrics
-        scan.setTimeStamp(timestamp) if timestamp
+        scan.setTimestamp(timestamp) if timestamp
         scan.setCacheBlocks(cache_blocks)
         scan.setReversed(reversed)
         scan.setCaching(cache) if cache > 0
@@ -751,8 +754,12 @@ EOF
     end
 
     def toLocalDateTime(millis)
-      instant = java.time.Instant.ofEpochMilli(millis)
-      return java.time.LocalDateTime.ofInstant(instant, java.time.ZoneId.systemDefault()).toString
+      if @timestamp_format_epoch
+        return millis
+      else
+        instant = java.time.Instant.ofEpochMilli(millis)
+        return java.time.LocalDateTime.ofInstant(instant, java.time.ZoneId.systemDefault()).toString
+      end
     end
 
     # Make a String of the passed kv

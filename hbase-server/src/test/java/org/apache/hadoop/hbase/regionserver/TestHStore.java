@@ -20,6 +20,7 @@ package org.apache.hadoop.hbase.regionserver;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
@@ -53,7 +54,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.IntBinaryOperator;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileStatus;
@@ -97,6 +97,7 @@ import org.apache.hadoop.hbase.io.hfile.HFileContext;
 import org.apache.hadoop.hbase.io.hfile.HFileContextBuilder;
 import org.apache.hadoop.hbase.monitoring.MonitoredTask;
 import org.apache.hadoop.hbase.quotas.RegionSizeStoreImpl;
+import org.apache.hadoop.hbase.regionserver.MemStoreCompactionStrategy.Action;
 import org.apache.hadoop.hbase.regionserver.compactions.CompactionConfiguration;
 import org.apache.hadoop.hbase.regionserver.compactions.DefaultCompactor;
 import org.apache.hadoop.hbase.regionserver.querymatcher.ScanQueryMatcher;
@@ -239,6 +240,7 @@ public class TestHStore {
     } else {
       store = new MyStore(region, hcd, conf, hook, switchToPread);
     }
+    region.stores.put(store.getColumnFamilyDescriptor().getName(), store);
     return store;
   }
 
@@ -1807,14 +1809,16 @@ public class TestHStore {
   // InmemoryFlushSize
   @Test(timeout = 60000)
   public void testCompactingMemStoreCellExceedInmemoryFlushSize()
-      throws IOException, InterruptedException {
+      throws Exception {
     Configuration conf = HBaseConfiguration.create();
-    conf.set(HStore.MEMSTORE_CLASS_NAME, CompactingMemStore.class.getName());
+    conf.set(HStore.MEMSTORE_CLASS_NAME, MyCompactingMemStore6.class.getName());
 
     init(name.getMethodName(), conf, ColumnFamilyDescriptorBuilder.newBuilder(family)
         .setInMemoryCompaction(MemoryCompactionPolicy.BASIC).build());
 
-    int size = (int) ((CompactingMemStore) store.memstore).getInmemoryFlushSize();
+    MyCompactingMemStore6 myCompactingMemStore = ((MyCompactingMemStore6) store.memstore);
+
+    int size = (int) (myCompactingMemStore.getInmemoryFlushSize());
     byte[] value = new byte[size + 1];
 
     MemStoreSizing memStoreSizing = new NonThreadSafeMemStoreSizing();
@@ -1825,6 +1829,8 @@ public class TestHStore {
     store.add(cell, memStoreSizing);
     assertTrue(memStoreSizing.getCellsCount() == 1);
     assertTrue(memStoreSizing.getDataSize() == cellByteSize);
+    // Waiting the in memory compaction completed, see HBASE-26438
+    myCompactingMemStore.inMemoryCompactionEndCyclicBarrier.await();
   }
 
   // This test is for HBASE-26210 also, test write large cell and small cell concurrently when
@@ -1936,6 +1942,388 @@ public class TestHStore {
     } finally {
       Thread.currentThread().setName(oldThreadName);
     }
+  }
+
+  /**
+   * <pre>
+    * This test is for HBASE-26384,
+   * test {@link CompactingMemStore#flattenOneSegment} and {@link CompactingMemStore#snapshot()}
+   * execute concurrently.
+   * The threads sequence before HBASE-26384 is(The bug only exists for branch-2,and I add UTs
+   * for both branch-2 and master):
+   * 1. The {@link CompactingMemStore} size exceeds
+   *    {@link CompactingMemStore#getInmemoryFlushSize()},the write thread adds a new
+   *    {@link ImmutableSegment}  to the head of {@link CompactingMemStore#pipeline},and start a
+   *    in memory compact thread to execute {@link CompactingMemStore#inMemoryCompaction}.
+   * 2. The in memory compact thread starts and then stopping before
+   *    {@link CompactingMemStore#flattenOneSegment}.
+   * 3. The snapshot thread starts {@link CompactingMemStore#snapshot} concurrently,after the
+   *    snapshot thread executing {@link CompactingMemStore#getImmutableSegments},the in memory
+   *    compact thread continues.
+   *    Assuming {@link VersionedSegmentsList#version} returned from
+   *    {@link CompactingMemStore#getImmutableSegments} is v.
+   * 4. The snapshot thread stopping before {@link CompactingMemStore#swapPipelineWithNull}.
+   * 5. The in memory compact thread completes {@link CompactingMemStore#flattenOneSegment},
+   *    {@link CompactionPipeline#version} is still v.
+   * 6. The snapshot thread continues {@link CompactingMemStore#swapPipelineWithNull}, and because
+   *    {@link CompactionPipeline#version} is v, {@link CompactingMemStore#swapPipelineWithNull}
+   *    thinks it is successful and continue flushing,but the {@link ImmutableSegment} in
+   *    {@link CompactionPipeline} has changed because
+   *    {@link CompactingMemStore#flattenOneSegment},so the {@link ImmutableSegment} is not
+   *    removed in fact and still remaining in {@link CompactionPipeline}.
+   *
+   * After HBASE-26384, the 5-6 step is changed to following, which is expected behavior:
+   * 5. The in memory compact thread completes {@link CompactingMemStore#flattenOneSegment},
+   *    {@link CompactingMemStore#flattenOneSegment} change {@link CompactionPipeline#version} to
+   *    v+1.
+   * 6. The snapshot thread continues {@link CompactingMemStore#swapPipelineWithNull}, and because
+   *    {@link CompactionPipeline#version} is v+1, {@link CompactingMemStore#swapPipelineWithNull}
+   *    failed and retry the while loop in {@link CompactingMemStore#pushPipelineToSnapshot} once
+   *    again, because there is no concurrent {@link CompactingMemStore#inMemoryCompaction} now,
+   *    {@link CompactingMemStore#swapPipelineWithNull} succeeds.
+   * </pre>
+   */
+  @Test
+  public void testFlattenAndSnapshotCompactingMemStoreConcurrently() throws Exception {
+    Configuration conf = HBaseConfiguration.create();
+
+    byte[] smallValue = new byte[3];
+    byte[] largeValue = new byte[9];
+    final long timestamp = EnvironmentEdgeManager.currentTime();
+    final long seqId = 100;
+    final Cell smallCell = createCell(qf1, timestamp, seqId, smallValue);
+    final Cell largeCell = createCell(qf2, timestamp, seqId, largeValue);
+    int smallCellByteSize = MutableSegment.getCellLength(smallCell);
+    int largeCellByteSize = MutableSegment.getCellLength(largeCell);
+    int totalCellByteSize = (smallCellByteSize + largeCellByteSize);
+    int flushByteSize = totalCellByteSize - 2;
+
+    // set CompactingMemStore.inmemoryFlushSize to flushByteSize.
+    conf.set(HStore.MEMSTORE_CLASS_NAME, MyCompactingMemStore4.class.getName());
+    conf.setDouble(CompactingMemStore.IN_MEMORY_FLUSH_THRESHOLD_FACTOR_KEY, 0.005);
+    conf.set(HConstants.HREGION_MEMSTORE_FLUSH_SIZE, String.valueOf(flushByteSize * 200));
+
+    init(name.getMethodName(), conf, ColumnFamilyDescriptorBuilder.newBuilder(family)
+        .setInMemoryCompaction(MemoryCompactionPolicy.BASIC).build());
+
+    MyCompactingMemStore4 myCompactingMemStore = ((MyCompactingMemStore4) store.memstore);
+    assertTrue((int) (myCompactingMemStore.getInmemoryFlushSize()) == flushByteSize);
+
+    store.add(smallCell, new NonThreadSafeMemStoreSizing());
+    store.add(largeCell, new NonThreadSafeMemStoreSizing());
+
+    String oldThreadName = Thread.currentThread().getName();
+    try {
+      Thread.currentThread().setName(MyCompactingMemStore4.TAKE_SNAPSHOT_THREAD_NAME);
+      /**
+       * {@link CompactingMemStore#snapshot} must wait the in memory compact thread enters
+       * {@link CompactingMemStore#flattenOneSegment},because {@link CompactingMemStore#snapshot}
+       * would invoke {@link CompactingMemStore#stopCompaction}.
+       */
+      myCompactingMemStore.snapShotStartCyclicCyclicBarrier.await();
+
+      MemStoreSnapshot memStoreSnapshot = myCompactingMemStore.snapshot();
+      myCompactingMemStore.inMemoryCompactionEndCyclicBarrier.await();
+
+      assertTrue(memStoreSnapshot.getCellsCount() == 2);
+      assertTrue(((int) (memStoreSnapshot.getDataSize())) == totalCellByteSize);
+      VersionedSegmentsList segments = myCompactingMemStore.getImmutableSegments();
+      assertTrue(segments.getNumOfSegments() == 0);
+      assertTrue(segments.getNumOfCells() == 0);
+      assertTrue(myCompactingMemStore.setInMemoryCompactionFlagCounter.get() == 1);
+      assertTrue(myCompactingMemStore.swapPipelineWithNullCounter.get() == 2);
+    } finally {
+      Thread.currentThread().setName(oldThreadName);
+    }
+  }
+
+  /**
+   * <pre>
+   * This test is for HBASE-26384,
+   * test {@link CompactingMemStore#flattenOneSegment}{@link CompactingMemStore#snapshot()}
+   * and writeMemStore execute concurrently.
+   * The threads sequence before HBASE-26384 is(The bug only exists for branch-2,and I add UTs
+   * for both branch-2 and master):
+   * 1. The {@link CompactingMemStore} size exceeds
+   *    {@link CompactingMemStore#getInmemoryFlushSize()},the write thread adds a new
+   *    {@link ImmutableSegment}  to the head of {@link CompactingMemStore#pipeline},and start a
+   *    in memory compact thread to execute {@link CompactingMemStore#inMemoryCompaction}.
+   * 2. The in memory compact thread starts and then stopping before
+   *    {@link CompactingMemStore#flattenOneSegment}.
+   * 3. The snapshot thread starts {@link CompactingMemStore#snapshot} concurrently,after the
+   *    snapshot thread executing {@link CompactingMemStore#getImmutableSegments},the in memory
+   *    compact thread continues.
+   *    Assuming {@link VersionedSegmentsList#version} returned from
+   *    {@link CompactingMemStore#getImmutableSegments} is v.
+   * 4. The snapshot thread stopping before {@link CompactingMemStore#swapPipelineWithNull}.
+   * 5. The in memory compact thread completes {@link CompactingMemStore#flattenOneSegment},
+   *    {@link CompactionPipeline#version} is still v.
+   * 6. The snapshot thread continues {@link CompactingMemStore#swapPipelineWithNull}, and because
+   *    {@link CompactionPipeline#version} is v, {@link CompactingMemStore#swapPipelineWithNull}
+   *    thinks it is successful and continue flushing,but the {@link ImmutableSegment} in
+   *    {@link CompactionPipeline} has changed because
+   *    {@link CompactingMemStore#flattenOneSegment},so the {@link ImmutableSegment} is not
+   *    removed in fact and still remaining in {@link CompactionPipeline}.
+   *
+   * After HBASE-26384, the 5-6 step is changed to following, which is expected behavior,
+   * and I add step 7-8 to test there is new segment added before retry.
+   * 5. The in memory compact thread completes {@link CompactingMemStore#flattenOneSegment},
+   *    {@link CompactingMemStore#flattenOneSegment} change {@link CompactionPipeline#version} to
+   *     v+1.
+   * 6. The snapshot thread continues {@link CompactingMemStore#swapPipelineWithNull}, and because
+   *    {@link CompactionPipeline#version} is v+1, {@link CompactingMemStore#swapPipelineWithNull}
+   *    failed and retry,{@link VersionedSegmentsList#version} returned from
+   *    {@link CompactingMemStore#getImmutableSegments} is v+1.
+   * 7. The write thread continues writing to {@link CompactingMemStore} and
+   *    {@link CompactingMemStore} size exceeds {@link CompactingMemStore#getInmemoryFlushSize()},
+   *    {@link CompactingMemStore#flushInMemory(MutableSegment)} is called and a new
+   *    {@link ImmutableSegment} is added to the head of {@link CompactingMemStore#pipeline},
+   *    {@link CompactionPipeline#version} is still v+1.
+   * 8. The snapshot thread continues {@link CompactingMemStore#swapPipelineWithNull}, and because
+   *    {@link CompactionPipeline#version} is still v+1,
+   *    {@link CompactingMemStore#swapPipelineWithNull} succeeds.The new {@link ImmutableSegment}
+   *    remained at the head of {@link CompactingMemStore#pipeline},the old is removed by
+   *    {@link CompactingMemStore#swapPipelineWithNull}.
+   * </pre>
+   */
+  @Test
+  public void testFlattenSnapshotWriteCompactingMemeStoreConcurrently() throws Exception {
+    Configuration conf = HBaseConfiguration.create();
+
+    byte[] smallValue = new byte[3];
+    byte[] largeValue = new byte[9];
+    final long timestamp = EnvironmentEdgeManager.currentTime();
+    final long seqId = 100;
+    final Cell smallCell = createCell(qf1, timestamp, seqId, smallValue);
+    final Cell largeCell = createCell(qf2, timestamp, seqId, largeValue);
+    int smallCellByteSize = MutableSegment.getCellLength(smallCell);
+    int largeCellByteSize = MutableSegment.getCellLength(largeCell);
+    int firstWriteCellByteSize = (smallCellByteSize + largeCellByteSize);
+    int flushByteSize = firstWriteCellByteSize - 2;
+
+    // set CompactingMemStore.inmemoryFlushSize to flushByteSize.
+    conf.set(HStore.MEMSTORE_CLASS_NAME, MyCompactingMemStore5.class.getName());
+    conf.setDouble(CompactingMemStore.IN_MEMORY_FLUSH_THRESHOLD_FACTOR_KEY, 0.005);
+    conf.set(HConstants.HREGION_MEMSTORE_FLUSH_SIZE, String.valueOf(flushByteSize * 200));
+
+    init(name.getMethodName(), conf, ColumnFamilyDescriptorBuilder.newBuilder(family)
+        .setInMemoryCompaction(MemoryCompactionPolicy.BASIC).build());
+
+    final MyCompactingMemStore5 myCompactingMemStore = ((MyCompactingMemStore5) store.memstore);
+    assertTrue((int) (myCompactingMemStore.getInmemoryFlushSize()) == flushByteSize);
+
+    store.add(smallCell, new NonThreadSafeMemStoreSizing());
+    store.add(largeCell, new NonThreadSafeMemStoreSizing());
+
+    final AtomicReference<Throwable> exceptionRef = new AtomicReference<Throwable>();
+    final Cell writeAgainCell1 = createCell(qf3, timestamp, seqId + 1, largeValue);
+    final Cell writeAgainCell2 = createCell(qf4, timestamp, seqId + 1, largeValue);
+    final int writeAgainCellByteSize = MutableSegment.getCellLength(writeAgainCell1)
+        + MutableSegment.getCellLength(writeAgainCell2);
+    final Thread writeAgainThread = new Thread(() -> {
+      try {
+        myCompactingMemStore.writeMemStoreAgainStartCyclicBarrier.await();
+
+        store.add(writeAgainCell1, new NonThreadSafeMemStoreSizing());
+        store.add(writeAgainCell2, new NonThreadSafeMemStoreSizing());
+
+        myCompactingMemStore.writeMemStoreAgainEndCyclicBarrier.await();
+      } catch (Throwable exception) {
+        exceptionRef.set(exception);
+      }
+    });
+    writeAgainThread.setName(MyCompactingMemStore5.WRITE_AGAIN_THREAD_NAME);
+    writeAgainThread.start();
+
+    String oldThreadName = Thread.currentThread().getName();
+    try {
+      Thread.currentThread().setName(MyCompactingMemStore5.TAKE_SNAPSHOT_THREAD_NAME);
+      /**
+       * {@link CompactingMemStore#snapshot} must wait the in memory compact thread enters
+       * {@link CompactingMemStore#flattenOneSegment},because {@link CompactingMemStore#snapshot}
+       * would invoke {@link CompactingMemStore#stopCompaction}.
+       */
+      myCompactingMemStore.snapShotStartCyclicCyclicBarrier.await();
+      MemStoreSnapshot memStoreSnapshot = myCompactingMemStore.snapshot();
+      myCompactingMemStore.inMemoryCompactionEndCyclicBarrier.await();
+      writeAgainThread.join();
+
+      assertTrue(memStoreSnapshot.getCellsCount() == 2);
+      assertTrue(((int) (memStoreSnapshot.getDataSize())) == firstWriteCellByteSize);
+      VersionedSegmentsList segments = myCompactingMemStore.getImmutableSegments();
+      assertTrue(segments.getNumOfSegments() == 1);
+      assertTrue(
+        ((int) (segments.getStoreSegments().get(0).getDataSize())) == writeAgainCellByteSize);
+      assertTrue(segments.getNumOfCells() == 2);
+      assertTrue(myCompactingMemStore.setInMemoryCompactionFlagCounter.get() == 2);
+      assertTrue(exceptionRef.get() == null);
+      assertTrue(myCompactingMemStore.swapPipelineWithNullCounter.get() == 2);
+    } finally {
+      Thread.currentThread().setName(oldThreadName);
+    }
+  }
+
+  /**
+   * <pre>
+   * This test is for HBASE-26465,
+   * test {@link DefaultMemStore#clearSnapshot} and {@link DefaultMemStore#getScanners} execute
+   * concurrently. The threads sequence before HBASE-26465 is:
+   * 1.The flush thread starts {@link DefaultMemStore} flushing after some cells have be added to
+   *  {@link DefaultMemStore}.
+   * 2.The flush thread stopping before {@link DefaultMemStore#clearSnapshot} in
+   *   {@link HStore#updateStorefiles} after completed flushing memStore to hfile.
+   * 3.The scan thread starts and stopping after {@link DefaultMemStore#getSnapshotSegments} in
+   *   {@link DefaultMemStore#getScanners},here the scan thread gets the
+   *   {@link DefaultMemStore#snapshot} which is created by the flush thread.
+   * 4.The flush thread continues {@link DefaultMemStore#clearSnapshot} and close
+   *   {@link DefaultMemStore#snapshot},because the reference count of the corresponding
+   *   {@link MemStoreLABImpl} is 0, the {@link Chunk}s in corresponding {@link MemStoreLABImpl}
+   *   are recycled.
+   * 5.The scan thread continues {@link DefaultMemStore#getScanners},and create a
+   *   {@link SegmentScanner} for this {@link DefaultMemStore#snapshot}, and increase the
+   *   reference count of the corresponding {@link MemStoreLABImpl}, but {@link Chunk}s in
+   *   corresponding {@link MemStoreLABImpl} are recycled by step 4, and these {@link Chunk}s may
+   *   be overwritten by other write threads,which may cause serious problem.
+   * After HBASE-26465,{@link DefaultMemStore#getScanners} and
+   * {@link DefaultMemStore#clearSnapshot} could not execute concurrently.
+   * </pre>
+   */
+  @Test
+  public void testClearSnapshotGetScannerConcurrently() throws Exception {
+    Configuration conf = HBaseConfiguration.create();
+
+    byte[] smallValue = new byte[3];
+    byte[] largeValue = new byte[9];
+    final long timestamp = EnvironmentEdgeManager.currentTime();
+    final long seqId = 100;
+    final Cell smallCell = createCell(qf1, timestamp, seqId, smallValue);
+    final Cell largeCell = createCell(qf2, timestamp, seqId, largeValue);
+    TreeSet<byte[]> quals = new TreeSet<>(Bytes.BYTES_COMPARATOR);
+    quals.add(qf1);
+    quals.add(qf2);
+
+    conf.set(HStore.MEMSTORE_CLASS_NAME, MyDefaultMemStore.class.getName());
+    conf.setBoolean(WALFactory.WAL_ENABLED, false);
+
+    init(name.getMethodName(), conf, ColumnFamilyDescriptorBuilder.newBuilder(family).build());
+    MyDefaultMemStore myDefaultMemStore = (MyDefaultMemStore) (store.memstore);
+    myDefaultMemStore.store = store;
+
+    MemStoreSizing memStoreSizing = new NonThreadSafeMemStoreSizing();
+    store.add(smallCell, memStoreSizing);
+    store.add(largeCell, memStoreSizing);
+
+    final AtomicReference<Throwable> exceptionRef = new AtomicReference<Throwable>();
+    final Thread flushThread = new Thread(() -> {
+      try {
+        flushStore(store, id++);
+      } catch (Throwable exception) {
+        exceptionRef.set(exception);
+      }
+    });
+    flushThread.setName(MyDefaultMemStore.FLUSH_THREAD_NAME);
+    flushThread.start();
+
+    String oldThreadName = Thread.currentThread().getName();
+    StoreScanner storeScanner = null;
+    try {
+      Thread.currentThread().setName(MyDefaultMemStore.GET_SCANNER_THREAD_NAME);
+
+      /**
+       * Wait flush thread stopping before {@link DefaultMemStore#doClearSnapshot}
+       */
+      myDefaultMemStore.getScannerCyclicBarrier.await();
+
+      storeScanner = (StoreScanner) store.getScanner(new Scan(new Get(row)), quals, seqId + 1);
+      flushThread.join();
+
+      if (myDefaultMemStore.shouldWait) {
+        SegmentScanner segmentScanner = getSegmentScanner(storeScanner);
+        MemStoreLABImpl memStoreLAB = (MemStoreLABImpl) (segmentScanner.segment.getMemStoreLAB());
+        assertTrue(memStoreLAB.isClosed());
+        assertTrue(!memStoreLAB.chunks.isEmpty());
+        assertTrue(!memStoreLAB.isReclaimed());
+
+        Cell cell1 = segmentScanner.next();
+        CellUtil.equals(smallCell, cell1);
+        Cell cell2 = segmentScanner.next();
+        CellUtil.equals(largeCell, cell2);
+        assertNull(segmentScanner.next());
+      } else {
+        List<Cell> results = new ArrayList<>();
+        storeScanner.next(results);
+        assertEquals(2, results.size());
+        CellUtil.equals(smallCell, results.get(0));
+        CellUtil.equals(largeCell, results.get(1));
+      }
+      assertTrue(exceptionRef.get() == null);
+    } finally {
+      if (storeScanner != null) {
+        storeScanner.close();
+      }
+      Thread.currentThread().setName(oldThreadName);
+    }
+  }
+
+  private SegmentScanner getSegmentScanner(StoreScanner storeScanner) {
+    List<SegmentScanner> segmentScanners = new ArrayList<SegmentScanner>();
+    for (KeyValueScanner keyValueScanner : storeScanner.currentScanners) {
+      if (keyValueScanner instanceof SegmentScanner) {
+        segmentScanners.add((SegmentScanner) keyValueScanner);
+      }
+    }
+
+    assertTrue(segmentScanners.size() == 1);
+    return segmentScanners.get(0);
+  }
+
+  @Test 
+  public void testOnConfigurationChange() throws IOException {
+    final int COMMON_MAX_FILES_TO_COMPACT = 10;
+    final int NEW_COMMON_MAX_FILES_TO_COMPACT = 8;
+    final int STORE_MAX_FILES_TO_COMPACT = 6;
+
+    //Build a table that its maxFileToCompact different from common configuration.
+    Configuration conf = HBaseConfiguration.create();
+    conf.setInt(CompactionConfiguration.HBASE_HSTORE_COMPACTION_MAX_KEY,
+      COMMON_MAX_FILES_TO_COMPACT);
+    ColumnFamilyDescriptor hcd = ColumnFamilyDescriptorBuilder.newBuilder(family)
+      .setConfiguration(CompactionConfiguration.HBASE_HSTORE_COMPACTION_MAX_KEY,
+        String.valueOf(STORE_MAX_FILES_TO_COMPACT)).build();
+    init(this.name.getMethodName(), conf, hcd);
+
+    //After updating common configuration, the conf in HStore itself must not be changed.
+    conf.setInt(CompactionConfiguration.HBASE_HSTORE_COMPACTION_MAX_KEY,
+      NEW_COMMON_MAX_FILES_TO_COMPACT);
+    this.store.onConfigurationChange(conf);
+    assertEquals(STORE_MAX_FILES_TO_COMPACT,
+      store.getStoreEngine().getCompactionPolicy().getConf().getMaxFilesToCompact());
+  }
+
+  /**
+   * This test is for HBASE-26476
+   */
+  @Test
+  public void testExtendsDefaultMemStore() throws Exception {
+    Configuration conf = HBaseConfiguration.create();
+    conf.setBoolean(WALFactory.WAL_ENABLED, false);
+
+    init(name.getMethodName(), conf, ColumnFamilyDescriptorBuilder.newBuilder(family).build());
+    assertTrue(this.store.memstore.getClass() == DefaultMemStore.class);
+    tearDown();
+
+    conf.set(HStore.MEMSTORE_CLASS_NAME, CustomDefaultMemStore.class.getName());
+    init(name.getMethodName(), conf, ColumnFamilyDescriptorBuilder.newBuilder(family).build());
+    assertTrue(this.store.memstore.getClass() == CustomDefaultMemStore.class);
+  }
+
+  static class CustomDefaultMemStore extends DefaultMemStore {
+
+    public CustomDefaultMemStore(Configuration conf, CellComparator c,
+        RegionServicesForStores regionServices) {
+      super(conf, c, regionServices);
+    }
+
   }
 
   private HStoreFile mockStoreFileWithLength(long length) {
@@ -2301,6 +2689,427 @@ public class TestHStore {
     void enableCompaction() {
       allowCompaction.set(true);
     }
+
+  }
+
+  public static class MyCompactingMemStore4 extends CompactingMemStore {
+    private static final String TAKE_SNAPSHOT_THREAD_NAME = "takeSnapShotThread";
+    /**
+     * {@link CompactingMemStore#flattenOneSegment} must execute after
+     * {@link CompactingMemStore#getImmutableSegments}
+     */
+    private final CyclicBarrier flattenOneSegmentPreCyclicBarrier = new CyclicBarrier(2);
+    /**
+     * Only after {@link CompactingMemStore#flattenOneSegment} completed,
+     * {@link CompactingMemStore#swapPipelineWithNull} could execute.
+     */
+    private final CyclicBarrier flattenOneSegmentPostCyclicBarrier = new CyclicBarrier(2);
+    /**
+     * Only the in memory compact thread enters {@link CompactingMemStore#flattenOneSegment},the
+     * snapshot thread starts {@link CompactingMemStore#snapshot},because
+     * {@link CompactingMemStore#snapshot} would invoke {@link CompactingMemStore#stopCompaction}.
+     */
+    private final CyclicBarrier snapShotStartCyclicCyclicBarrier = new CyclicBarrier(2);
+    /**
+     * To wait for {@link CompactingMemStore.InMemoryCompactionRunnable} stopping.
+     */
+    private final CyclicBarrier inMemoryCompactionEndCyclicBarrier = new CyclicBarrier(2);
+    private final AtomicInteger getImmutableSegmentsListCounter = new AtomicInteger(0);
+    private final AtomicInteger swapPipelineWithNullCounter = new AtomicInteger(0);
+    private final AtomicInteger flattenOneSegmentCounter = new AtomicInteger(0);
+    private final AtomicInteger setInMemoryCompactionFlagCounter = new AtomicInteger(0);
+
+    public MyCompactingMemStore4(Configuration conf, CellComparatorImpl cellComparator,
+        HStore store, RegionServicesForStores regionServices,
+        MemoryCompactionPolicy compactionPolicy) throws IOException {
+      super(conf, cellComparator, store, regionServices, compactionPolicy);
+    }
+
+    @Override
+    public VersionedSegmentsList getImmutableSegments() {
+      VersionedSegmentsList result = super.getImmutableSegments();
+      if (Thread.currentThread().getName().equals(TAKE_SNAPSHOT_THREAD_NAME)) {
+        int currentCount = getImmutableSegmentsListCounter.incrementAndGet();
+        if (currentCount <= 1) {
+          try {
+            flattenOneSegmentPreCyclicBarrier.await();
+          } catch (Throwable e) {
+            throw new RuntimeException(e);
+          }
+        }
+      }
+      return result;
+    }
+
+    @Override
+    protected boolean swapPipelineWithNull(VersionedSegmentsList segments) {
+      if (Thread.currentThread().getName().equals(TAKE_SNAPSHOT_THREAD_NAME)) {
+        int currentCount = swapPipelineWithNullCounter.incrementAndGet();
+        if (currentCount <= 1) {
+          try {
+            flattenOneSegmentPostCyclicBarrier.await();
+          } catch (Throwable e) {
+            throw new RuntimeException(e);
+          }
+        }
+      }
+      boolean result = super.swapPipelineWithNull(segments);
+      if (Thread.currentThread().getName().equals(TAKE_SNAPSHOT_THREAD_NAME)) {
+        int currentCount = swapPipelineWithNullCounter.get();
+        if (currentCount <= 1) {
+          assertTrue(!result);
+        }
+        if (currentCount == 2) {
+          assertTrue(result);
+        }
+      }
+      return result;
+
+    }
+
+    @Override
+    public void flattenOneSegment(long requesterVersion, Action action) {
+      int currentCount = flattenOneSegmentCounter.incrementAndGet();
+      if (currentCount <= 1) {
+        try {
+          /**
+           * {@link CompactingMemStore#snapshot} could start.
+           */
+          snapShotStartCyclicCyclicBarrier.await();
+          flattenOneSegmentPreCyclicBarrier.await();
+        } catch (Throwable e) {
+          throw new RuntimeException(e);
+        }
+      }
+      super.flattenOneSegment(requesterVersion, action);
+      if (currentCount <= 1) {
+        try {
+          flattenOneSegmentPostCyclicBarrier.await();
+        } catch (Throwable e) {
+          throw new RuntimeException(e);
+        }
+      }
+    }
+
+    @Override
+    protected boolean setInMemoryCompactionFlag() {
+      boolean result = super.setInMemoryCompactionFlag();
+      assertTrue(result);
+      setInMemoryCompactionFlagCounter.incrementAndGet();
+      return result;
+    }
+
+    @Override
+    void inMemoryCompaction() {
+      try {
+        super.inMemoryCompaction();
+      } finally {
+        try {
+          inMemoryCompactionEndCyclicBarrier.await();
+        } catch (Throwable e) {
+          throw new RuntimeException(e);
+        }
+
+      }
+    }
+
+  }
+
+  public static class MyCompactingMemStore5 extends CompactingMemStore {
+    private static final String TAKE_SNAPSHOT_THREAD_NAME = "takeSnapShotThread";
+    private static final String WRITE_AGAIN_THREAD_NAME = "writeAgainThread";
+    /**
+     * {@link CompactingMemStore#flattenOneSegment} must execute after
+     * {@link CompactingMemStore#getImmutableSegments}
+     */
+    private final CyclicBarrier flattenOneSegmentPreCyclicBarrier = new CyclicBarrier(2);
+    /**
+     * Only after {@link CompactingMemStore#flattenOneSegment} completed,
+     * {@link CompactingMemStore#swapPipelineWithNull} could execute.
+     */
+    private final CyclicBarrier flattenOneSegmentPostCyclicBarrier = new CyclicBarrier(2);
+    /**
+     * Only the in memory compact thread enters {@link CompactingMemStore#flattenOneSegment},the
+     * snapshot thread starts {@link CompactingMemStore#snapshot},because
+     * {@link CompactingMemStore#snapshot} would invoke {@link CompactingMemStore#stopCompaction}.
+     */
+    private final CyclicBarrier snapShotStartCyclicCyclicBarrier = new CyclicBarrier(2);
+    /**
+     * To wait for {@link CompactingMemStore.InMemoryCompactionRunnable} stopping.
+     */
+    private final CyclicBarrier inMemoryCompactionEndCyclicBarrier = new CyclicBarrier(2);
+    private final AtomicInteger getImmutableSegmentsListCounter = new AtomicInteger(0);
+    private final AtomicInteger swapPipelineWithNullCounter = new AtomicInteger(0);
+    private final AtomicInteger flattenOneSegmentCounter = new AtomicInteger(0);
+    private final AtomicInteger setInMemoryCompactionFlagCounter = new AtomicInteger(0);
+    /**
+     * Only the snapshot thread retry {@link CompactingMemStore#swapPipelineWithNull}, writeAgain
+     * thread could start.
+     */
+    private final CyclicBarrier writeMemStoreAgainStartCyclicBarrier = new CyclicBarrier(2);
+    /**
+     * This is used for snapshot thread,writeAgain thread and in memory compact thread. Only the
+     * writeAgain thread completes, {@link CompactingMemStore#swapPipelineWithNull} would
+     * execute,and in memory compact thread would exit,because we expect that in memory compact
+     * executing only once.
+     */
+    private final CyclicBarrier writeMemStoreAgainEndCyclicBarrier = new CyclicBarrier(3);
+
+    public MyCompactingMemStore5(Configuration conf, CellComparatorImpl cellComparator,
+        HStore store, RegionServicesForStores regionServices,
+        MemoryCompactionPolicy compactionPolicy) throws IOException {
+      super(conf, cellComparator, store, regionServices, compactionPolicy);
+    }
+
+    @Override
+    public VersionedSegmentsList getImmutableSegments() {
+      VersionedSegmentsList result = super.getImmutableSegments();
+      if (Thread.currentThread().getName().equals(TAKE_SNAPSHOT_THREAD_NAME)) {
+        int currentCount = getImmutableSegmentsListCounter.incrementAndGet();
+        if (currentCount <= 1) {
+          try {
+            flattenOneSegmentPreCyclicBarrier.await();
+          } catch (Throwable e) {
+            throw new RuntimeException(e);
+          }
+        }
+
+      }
+
+      return result;
+    }
+
+    @Override
+    protected boolean swapPipelineWithNull(VersionedSegmentsList segments) {
+      if (Thread.currentThread().getName().equals(TAKE_SNAPSHOT_THREAD_NAME)) {
+        int currentCount = swapPipelineWithNullCounter.incrementAndGet();
+        if (currentCount <= 1) {
+          try {
+            flattenOneSegmentPostCyclicBarrier.await();
+          } catch (Throwable e) {
+            throw new RuntimeException(e);
+          }
+        }
+
+        if (currentCount == 2) {
+          try {
+            /**
+             * Only the snapshot thread retry {@link CompactingMemStore#swapPipelineWithNull},
+             * writeAgain thread could start.
+             */
+            writeMemStoreAgainStartCyclicBarrier.await();
+            /**
+             * Only the writeAgain thread completes, retry
+             * {@link CompactingMemStore#swapPipelineWithNull} would execute.
+             */
+            writeMemStoreAgainEndCyclicBarrier.await();
+          } catch (Throwable e) {
+            throw new RuntimeException(e);
+          }
+        }
+
+      }
+      boolean result = super.swapPipelineWithNull(segments);
+      if (Thread.currentThread().getName().equals(TAKE_SNAPSHOT_THREAD_NAME)) {
+        int currentCount = swapPipelineWithNullCounter.get();
+        if (currentCount <= 1) {
+          assertTrue(!result);
+        }
+        if (currentCount == 2) {
+          assertTrue(result);
+        }
+      }
+      return result;
+
+    }
+
+    @Override
+    public void flattenOneSegment(long requesterVersion, Action action) {
+      int currentCount = flattenOneSegmentCounter.incrementAndGet();
+      if (currentCount <= 1) {
+        try {
+          /**
+           * {@link CompactingMemStore#snapshot} could start.
+           */
+          snapShotStartCyclicCyclicBarrier.await();
+          flattenOneSegmentPreCyclicBarrier.await();
+        } catch (Throwable e) {
+          throw new RuntimeException(e);
+        }
+      }
+      super.flattenOneSegment(requesterVersion, action);
+      if (currentCount <= 1) {
+        try {
+          flattenOneSegmentPostCyclicBarrier.await();
+          /**
+           * Only the writeAgain thread completes, in memory compact thread would exit,because we
+           * expect that in memory compact executing only once.
+           */
+          writeMemStoreAgainEndCyclicBarrier.await();
+        } catch (Throwable e) {
+          throw new RuntimeException(e);
+        }
+
+      }
+    }
+
+    @Override
+    protected boolean setInMemoryCompactionFlag() {
+      boolean result = super.setInMemoryCompactionFlag();
+      int count = setInMemoryCompactionFlagCounter.incrementAndGet();
+      if (count <= 1) {
+        assertTrue(result);
+      }
+      if (count == 2) {
+        assertTrue(!result);
+      }
+      return result;
+    }
+
+    @Override
+    void inMemoryCompaction() {
+      try {
+        super.inMemoryCompaction();
+      } finally {
+        try {
+          inMemoryCompactionEndCyclicBarrier.await();
+        } catch (Throwable e) {
+          throw new RuntimeException(e);
+        }
+
+      }
+    }
+  }
+
+  public static class MyCompactingMemStore6 extends CompactingMemStore {
+    private final CyclicBarrier inMemoryCompactionEndCyclicBarrier = new CyclicBarrier(2);
+
+    public MyCompactingMemStore6(Configuration conf, CellComparatorImpl cellComparator,
+        HStore store, RegionServicesForStores regionServices,
+        MemoryCompactionPolicy compactionPolicy) throws IOException {
+      super(conf, cellComparator, store, regionServices, compactionPolicy);
+    }
+
+    @Override
+    void inMemoryCompaction() {
+      try {
+        super.inMemoryCompaction();
+      } finally {
+        try {
+          inMemoryCompactionEndCyclicBarrier.await();
+        } catch (Throwable e) {
+          throw new RuntimeException(e);
+        }
+
+      }
+    }
+  }
+
+  public static class MyDefaultMemStore extends DefaultMemStore {
+    private static final String GET_SCANNER_THREAD_NAME = "getScannerMyThread";
+    private static final String FLUSH_THREAD_NAME = "flushMyThread";
+    /**
+     * Only when flush thread enters {@link DefaultMemStore#doClearSnapShot}, getScanner thread
+     * could start.
+     */
+    private final CyclicBarrier getScannerCyclicBarrier = new CyclicBarrier(2);
+    /**
+     * Used by getScanner thread notifies flush thread {@link DefaultMemStore#getSnapshotSegments}
+     * completed, {@link DefaultMemStore#doClearSnapShot} could continue.
+     */
+    private final CyclicBarrier preClearSnapShotCyclicBarrier = new CyclicBarrier(2);
+    /**
+     * Used by flush thread notifies getScanner thread {@link DefaultMemStore#doClearSnapShot}
+     * completed, {@link DefaultMemStore#getScanners} could continue.
+     */
+    private final CyclicBarrier postClearSnapShotCyclicBarrier = new CyclicBarrier(2);
+    private final AtomicInteger getSnapshotSegmentsCounter = new AtomicInteger(0);
+    private final AtomicInteger clearSnapshotCounter = new AtomicInteger(0);
+    private volatile boolean shouldWait = true;
+    private volatile HStore store = null;
+
+    public MyDefaultMemStore(Configuration conf, CellComparator cellComparator,
+        RegionServicesForStores regionServices)
+        throws IOException {
+      super(conf, cellComparator, regionServices);
+    }
+
+    @Override
+    protected List<Segment> getSnapshotSegments() {
+
+      List<Segment> result = super.getSnapshotSegments();
+
+      if (Thread.currentThread().getName().equals(GET_SCANNER_THREAD_NAME)) {
+        int currentCount = getSnapshotSegmentsCounter.incrementAndGet();
+        if (currentCount == 1) {
+          if (this.shouldWait) {
+            try {
+              /**
+               * Notify flush thread {@link DefaultMemStore#getSnapshotSegments} completed,
+               * {@link DefaultMemStore#doClearSnapShot} could continue.
+               */
+              preClearSnapShotCyclicBarrier.await();
+              /**
+               * Wait for {@link DefaultMemStore#doClearSnapShot} completed.
+               */
+              postClearSnapShotCyclicBarrier.await();
+
+            } catch (Throwable e) {
+              throw new RuntimeException(e);
+            }
+          }
+        }
+      }
+      return result;
+    }
+
+
+    @Override
+    protected void doClearSnapShot() {
+      if (Thread.currentThread().getName().equals(FLUSH_THREAD_NAME)) {
+        int currentCount = clearSnapshotCounter.incrementAndGet();
+        if (currentCount == 1) {
+          try {
+            if (store.lock.isWriteLockedByCurrentThread()) {
+              shouldWait = false;
+            }
+            /**
+             * Only when flush thread enters {@link DefaultMemStore#doClearSnapShot}, getScanner
+             * thread could start.
+             */
+            getScannerCyclicBarrier.await();
+
+            if (shouldWait) {
+              /**
+               * Wait for {@link DefaultMemStore#getSnapshotSegments} completed.
+               */
+              preClearSnapShotCyclicBarrier.await();
+            }
+          } catch (Throwable e) {
+            throw new RuntimeException(e);
+          }
+        }
+      }
+      super.doClearSnapShot();
+
+      if (Thread.currentThread().getName().equals(FLUSH_THREAD_NAME)) {
+        int currentCount = clearSnapshotCounter.get();
+        if (currentCount == 1) {
+          if (shouldWait) {
+            try {
+              /**
+               * Notify getScanner thread {@link DefaultMemStore#doClearSnapShot} completed,
+               * {@link DefaultMemStore#getScanners} could continue.
+               */
+              postClearSnapShotCyclicBarrier.await();
+            } catch (Throwable e) {
+              throw new RuntimeException(e);
+            }
+          }
+        }
+      }
+    }
+
 
   }
 }

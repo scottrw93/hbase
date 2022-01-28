@@ -20,6 +20,95 @@
 # Be careful doing manual edits in this file. Do not change format
 # of release header or remove the below marker. This file is generated.
 # DO NOT REMOVE THIS MARKER; FOR INTERPOLATING CHANGES!-->
+# HBASE  2.4.9 Release Notes
+
+These release notes cover new developer and user-facing incompatibilities, important issues, features, and major improvements.
+
+
+---
+
+* [HBASE-26542](https://issues.apache.org/jira/browse/HBASE-26542) | *Minor* | **Apply a \`package\` to test protobuf files**
+
+The protobuf structures used in test are all now scoped by the package name \`hbase.test.pb\`.
+
+
+---
+
+* [HBASE-26512](https://issues.apache.org/jira/browse/HBASE-26512) | *Major* | **Make timestamp format configurable in HBase shell scan output**
+
+HBASE-23930 changed the formatting of the timestamp attribute on each Cell as displayed by the HBase shell to be formatted as an ISO-8601 string rather that milliseconds since the epoch. Some users may have logic which expects the timestamp to be displayed as milliseconds since the epoch. This change introduces the configuration property hbase.shell.timestamp.format.epoch which controls whether the shell will print an ISO-8601 formatted timestamp (the default "false") or milliseconds since the epoch ("true").
+
+
+
+# HBASE  2.4.8 Release Notes
+
+These release notes cover new developer and user-facing incompatibilities, important issues, features, and major improvements.
+
+
+---
+
+* [HBASE-26362](https://issues.apache.org/jira/browse/HBASE-26362) | *Major* | **Upload mvn site artifacts for nightly build to nightlies**
+
+Now we will upload the site artifacts to nightlies for nightly build as well as pre commit build.
+
+
+---
+
+* [HBASE-26329](https://issues.apache.org/jira/browse/HBASE-26329) | *Major* | **Upgrade commons-io to 2.11.0**
+
+Upgraded commons-io to 2.11.0.
+
+
+---
+
+* [HBASE-26186](https://issues.apache.org/jira/browse/HBASE-26186) | *Major* | **jenkins script for caching artifacts should verify cached file before relying on it**
+
+Add a '--verify-tar-gz' option to cache-apache-project-artifact.sh for verifying whether the cached file can be parsed as a gzipped tarball.
+Use this option in our nightly job to avoid failures on broken cached hadoop tarballs.
+
+
+---
+
+* [HBASE-26339](https://issues.apache.org/jira/browse/HBASE-26339) | *Major* | **SshPublisher will skip uploading artifacts if the build is failure**
+
+Now we will mark build as unstable instead of failure when the yetus script returns error. This is used to solve the problem that the SshPublisher jenkins plugin will skip uploading artifacts if the build is marked as failure. In fact, the test output will be more important when there are UT failures.
+
+
+
+# HBASE  2.4.7 Release Notes
+
+These release notes cover new developer and user-facing incompatibilities, important issues, features, and major improvements.
+
+
+---
+
+* [HBASE-26274](https://issues.apache.org/jira/browse/HBASE-26274) | *Major* | **Create an option to reintroduce BlockCache to mapreduce job**
+
+Introduce \`hfile.onheap.block.cache.fixed.size\` and default to disable. When using ClientSideRegionScanner, it will be enabled with a fixed size for caching INDEX/LEAF\_INDEX block when a client, e.g. snapshot scanner, scans the entire HFile and does not need to seek/reseek to index block multiple times.
+
+
+---
+
+* [HBASE-26270](https://issues.apache.org/jira/browse/HBASE-26270) | *Minor* | **Provide getConfiguration method for Region and Store interface**
+
+Provide 'getReadOnlyConfiguration' method for Store and Region interface
+
+
+---
+
+* [HBASE-26273](https://issues.apache.org/jira/browse/HBASE-26273) | *Major* | **TableSnapshotInputFormat/TableSnapshotInputFormatImpl should use ReadType.STREAM for scanning HFiles**
+
+HBase's MapReduce API which can operate over HBase snapshots will now default to using ReadType.STREAM instead of ReadType.DEFAULT (which is PREAD) as a result of this change. HBase developers expect that STREAM will perform significantly better for average Snapshot-based batch jobs. Users can restore the previous functionality (using PREAD) by updating their code to explicitly set a value of \`ReadType.PREAD\` on the \`Scan\` object they provide to TableSnapshotInputFormat, or by setting the configuration property "hbase.TableSnapshotInputFormat.scanner.readtype" to "PREAD" in hbase-site.xml.
+
+
+---
+
+* [HBASE-26276](https://issues.apache.org/jira/browse/HBASE-26276) | *Major* | **Allow HashTable/SyncTable to perform rawScan when comparing cells**
+
+Added --rawScan option to HashTable job, which allows HashTable/SyncTable to perform raw scans. If this property is omitted, it defaults to false. When used together with --versions set to a high value, SyncTable will fabricate delete markers to all old versions still hanging (not cleaned yet by major compaction), avoiding the inconsistencies reported in HBASE-21596.
+
+
+
 # HBASE  2.4.6 Release Notes
 
 These release notes cover new developer and user-facing incompatibilities, important issues, features, and major improvements.

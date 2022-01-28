@@ -2217,6 +2217,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
       final ReplicateWALEntryRequest request) throws ServiceException {
     long before = EnvironmentEdgeManager.currentTime();
     CellScanner cells = ((HBaseRpcController) controller).cellScanner();
+    ((HBaseRpcController) controller).setCellScanner(null);
     try {
       checkOpen();
       List<WALEntry> entries = request.getEntryList();
@@ -2319,6 +2320,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
         requestCount.increment();
         List<WALEntry> entries = request.getEntryList();
         CellScanner cellScanner = ((HBaseRpcController)controller).cellScanner();
+        ((HBaseRpcController) controller).setCellScanner(null);
         regionServer.getRegionServerCoprocessorHost().preReplicateLogEntries();
         regionServer.getReplicationSinkService().replicateLogEntries(entries, cellScanner,
           request.getReplicationClusterId(), request.getSourceBaseNamespaceDirPath(),
@@ -3821,7 +3823,8 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
     long masterSystemTime = request.hasMasterSystemTime() ? request.getMasterSystemTime() : -1;
     for (RegionOpenInfo regionOpenInfo : request.getOpenInfoList()) {
       RegionInfo regionInfo = ProtobufUtil.toRegionInfo(regionOpenInfo.getRegion());
-      TableDescriptor tableDesc = tdCache.get(regionInfo.getTable());
+      TableName tableName = regionInfo.getTable();
+      TableDescriptor tableDesc = tdCache.get(tableName);
       if (tableDesc == null) {
         try {
           tableDesc = regionServer.getTableDescriptors().get(regionInfo.getTable());
@@ -3832,6 +3835,9 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
           // TableDescriptor.
           LOG.warn("Failed to get TableDescriptor of {}, will try again in the handler",
             regionInfo.getTable(), e);
+        }
+        if(tableDesc != null) {
+          tdCache.put(tableName, tableDesc);
         }
       }
       if (regionOpenInfo.getFavoredNodesCount() > 0) {

@@ -61,7 +61,6 @@ import org.apache.hadoop.fs.permission.FsAction;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.CellComparator;
 import org.apache.hadoop.hbase.CellUtil;
-import org.apache.hadoop.hbase.CompoundConfiguration;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.MemoryCompactionPolicy;
 import org.apache.hadoop.hbase.TableName;
@@ -71,6 +70,7 @@ import org.apache.hadoop.hbase.client.RegionInfo;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.conf.ConfigurationManager;
 import org.apache.hadoop.hbase.conf.PropagatingConfigurationObserver;
+import org.apache.hadoop.hbase.coprocessor.ReadOnlyConfiguration;
 import org.apache.hadoop.hbase.io.HeapSize;
 import org.apache.hadoop.hbase.io.compress.Compression;
 import org.apache.hadoop.hbase.io.crypto.Encryption;
@@ -245,14 +245,7 @@ public class HStore implements Store, HeapSize, StoreConfigInformation,
   protected HStore(final HRegion region, final ColumnFamilyDescriptor family,
       final Configuration confParam, boolean warmup) throws IOException {
 
-    // 'conf' renamed to 'confParam' b/c we use this.conf in the constructor
-    // CompoundConfiguration will look for keys in reverse order of addition, so we'd
-    // add global config first, then table and cf overrides, then cf metadata.
-    this.conf = new CompoundConfiguration()
-      .add(confParam)
-      .addBytesMap(region.getTableDescriptor().getValues())
-      .addStringMap(family.getConfiguration())
-      .addBytesMap(family.getValues());
+    this.conf = StoreUtils.createStoreConfiguration(confParam, region.getTableDescriptor(), family);
 
     this.region = region;
     this.storeContext = initializeStoreContext(family);
@@ -377,17 +370,21 @@ public class HStore implements Store, HeapSize, StoreConfigInformation,
           MemoryCompactionPolicy.valueOf(conf.get(CompactingMemStore.COMPACTING_MEMSTORE_TYPE_KEY,
               CompactingMemStore.COMPACTING_MEMSTORE_TYPE_DEFAULT).toUpperCase());
     }
+
     switch (inMemoryCompaction) {
       case NONE:
-        ms = ReflectionUtils.newInstance(DefaultMemStore.class,
+        Class<? extends MemStore> memStoreClass =
+            conf.getClass(MEMSTORE_CLASS_NAME, DefaultMemStore.class, MemStore.class);
+        ms = ReflectionUtils.newInstance(memStoreClass,
             new Object[] { conf, getComparator(),
                 this.getHRegion().getRegionServicesForStores()});
         break;
       default:
-        Class<? extends CompactingMemStore> clz = conf.getClass(MEMSTORE_CLASS_NAME,
-            CompactingMemStore.class, CompactingMemStore.class);
-        ms = ReflectionUtils.newInstance(clz, new Object[]{conf, getComparator(), this,
-            this.getHRegion().getRegionServicesForStores(), inMemoryCompaction});
+        Class<? extends CompactingMemStore> compactingMemStoreClass =
+            conf.getClass(MEMSTORE_CLASS_NAME, CompactingMemStore.class, CompactingMemStore.class);
+        ms = ReflectionUtils.newInstance(compactingMemStoreClass,
+          new Object[] { conf, getComparator(), this,
+              this.getHRegion().getRegionServicesForStores(), inMemoryCompaction });
     }
     return ms;
   }
@@ -1240,6 +1237,11 @@ public class HStore implements Store, HeapSize, StoreConfigInformation,
     this.lock.writeLock().lock();
     try {
       this.storeEngine.getStoreFileManager().insertNewFiles(sfs);
+      /**
+       * NOTE:we should keep clearSnapshot method inside the write lock because clearSnapshot may
+       * close {@link DefaultMemStore#snapshot}, which may be used by
+       * {@link DefaultMemStore#getScanners}.
+       */
       if (snapshotId > 0) {
         this.memstore.clearSnapshot(snapshotId);
       }
@@ -1251,6 +1253,7 @@ public class HStore implements Store, HeapSize, StoreConfigInformation,
       // the lock.
       this.lock.writeLock().unlock();
     }
+
     // notify to be called here - only in case of flushes
     notifyChangedReadersObservers(sfs);
     if (LOG.isTraceEnabled()) {
@@ -2621,16 +2624,13 @@ public class HStore implements Store, HeapSize, StoreConfigInformation,
     return this.offPeakHours;
   }
 
-  /**
-   * {@inheritDoc}
-   */
   @Override
   public void onConfigurationChange(Configuration conf) {
-    this.conf = new CompoundConfiguration()
-            .add(conf)
-            .addBytesMap(getColumnFamilyDescriptor().getValues());
-    this.storeEngine.compactionPolicy.setConf(conf);
-    this.offPeakHours = OffPeakHours.getInstance(conf);
+    Configuration storeConf = StoreUtils.createStoreConfiguration(conf, region.getTableDescriptor(),
+      getColumnFamilyDescriptor());
+    this.conf = storeConf;
+    this.storeEngine.compactionPolicy.setConf(storeConf);
+    this.offPeakHours = OffPeakHours.getInstance(storeConf);
   }
 
   /**
@@ -2897,6 +2897,11 @@ public class HStore implements Store, HeapSize, StoreConfigInformation,
   @Override
   public long getMixedRowReadsCount() {
     return mixedRowReadsCount.sum();
+  }
+
+  @Override
+  public Configuration getReadOnlyConfiguration() {
+    return new ReadOnlyConfiguration(this.conf);
   }
 
   void updateMetricsStore(boolean memstoreRead) {
