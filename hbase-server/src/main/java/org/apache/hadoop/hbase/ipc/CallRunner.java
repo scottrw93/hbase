@@ -216,6 +216,7 @@ public class CallRunner {
       call.setResponse(null, null, CALL_DROPPED_EXCEPTION, "Call dropped, server "
         + (address != null ? address : "(channel closed)") + " is overloaded, please retry.");
       call.sendResponseIfReady();
+      this.rpcServer.getMetrics().exception(CALL_DROPPED_EXCEPTION);
     } catch (ClosedChannelException cce) {
       InetSocketAddress address = rpcServer.getListenerAddress();
       RpcServer.LOG.warn(Thread.currentThread().getName() + ": caught a ClosedChannelException, " +
