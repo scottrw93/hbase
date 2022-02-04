@@ -382,13 +382,13 @@ public abstract class RpcExecutor {
     }
   }
 
-  public static QueueBalancer getBalancer(Configuration conf, List<BlockingQueue<CallRunner>> queues) {
+  public static QueueBalancer getBalancer(String name, Configuration conf, List<BlockingQueue<CallRunner>> queues) {
     Preconditions.checkArgument(queues.size() > 0, "Queue size is <= 0, must be at least 1");
     if (queues.size() == 1) {
       return ONE_QUEUE;
     } else {
       Class<?> balancerClass = conf.getClass(CALL_QUEUE_QUEUE_BALANCER_CLASS, CALL_QUEUE_QUEUE_BALANCER_CLASS_DEFAULT);
-      return (QueueBalancer) ReflectionUtils.newInstance(balancerClass, conf, queues);
+      return (QueueBalancer) ReflectionUtils.newInstance(balancerClass, conf, name, queues);
     }
   }
 

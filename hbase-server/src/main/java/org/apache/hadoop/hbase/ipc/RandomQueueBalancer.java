@@ -36,7 +36,7 @@ public class RandomQueueBalancer implements QueueBalancer {
   private final int queueSize;
   private final List<BlockingQueue<CallRunner>> queues;
 
-  public RandomQueueBalancer(Configuration conf, List<BlockingQueue<CallRunner>> queues) {
+  public RandomQueueBalancer(Configuration conf, String name, List<BlockingQueue<CallRunner>> queues) {
     this.queueSize = queues.size();
     this.queues = queues;
   }
