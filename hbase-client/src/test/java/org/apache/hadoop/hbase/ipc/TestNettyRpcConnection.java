@@ -35,6 +35,7 @@ import org.apache.hadoop.hbase.testclassification.SmallTests;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.ClassRule;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.slf4j.Logger;
@@ -67,6 +68,7 @@ public class TestNettyRpcConnection {
     Closeables.close(CLIENT, true);
   }
 
+  @Ignore
   @Test
   public void testPrivateMethodExecutedInEventLoop() throws IllegalAccessException {
     // make sure the test is executed with "-ea"
