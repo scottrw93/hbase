@@ -481,7 +481,7 @@ public class StochasticLoadBalancer extends BaseLoadBalancer {
     double currentCost = computeCost(cluster, Double.MAX_VALUE);
     curOverallCost = currentCost;
     System.arraycopy(tempFunctionCosts, 0, curFunctionCosts, 0, curFunctionCosts.length);
-    updateStochasticCosts(tableName, curOverallCost, currentCost / sumMultiplier, curFunctionCosts);
+    updateStochasticCosts(tableName, curOverallCost, curOverallCost / sumMultiplier, curFunctionCosts);
     double initCost = currentCost;
     double newCost;
 
@@ -552,7 +552,7 @@ public class StochasticLoadBalancer extends BaseLoadBalancer {
     metricsBalancer.balanceCluster(endTime - startTime);
 
     if (initCost > currentCost) {
-      updateStochasticCosts(tableName, curOverallCost, currentCost / sumMultiplier, curFunctionCosts);
+      updateStochasticCosts(tableName, curOverallCost, curOverallCost / sumMultiplier, curFunctionCosts);
       plans = createRegionPlans(cluster);
       LOG.info("Finished computing new moving plan. Computation took {} ms" +
           " to try {} different iterations.  Found a solution that moves " +
@@ -615,9 +615,10 @@ public class StochasticLoadBalancer extends BaseLoadBalancer {
       if (costFunction instanceof MoveCostFunction){
         String costFunctionName = costFunction.getClass().getSimpleName();
         double moveCost = currentFunctionCosts[i];
-        double costPercent = (currentCost == 0) ? 0 : ( moveCost/ currentCost);
+        double costPercent = (currentCost == 0) ? 0 : (moveCost/ currentCost);
         if (costPercent > .50 ){
-          LOG.info("Move cost greatly impacting overall cost of improvement plan. currentCost={} percentageOfCost={}. Consider lowering moveCost multiplier.",moveCost, costPercent );
+          LOG.info("{} greatly impacting overall cost of improvement plan. currentCost={} percentageOfCost={}. Consider lowering moveCost multiplier.", costFunctionName, moveCost, costPercent );
+          break;
         }
       }
 
@@ -627,6 +628,7 @@ public class StochasticLoadBalancer extends BaseLoadBalancer {
    * update costs to JMX
    */
   private void updateStochasticCosts(TableName tableName, double overall, double weightedImbalance, double[] subCosts) {
+
     if (tableName == null) {
       return;
     }
@@ -648,7 +650,7 @@ public class StochasticLoadBalancer extends BaseLoadBalancer {
         String costFunctionName = costFunction.getClass().getSimpleName();
         double costPercent = (overall == 0) ? 0 : (subCosts[i] / overall);
         // TODO: cost function may need a specific description
-        balancer.updateStochasticCost(tableName.getNameAsString(), costFunctionName + "Percentage",
+        balancer.updateStochasticCost(tableName.getNameAsString(), costFunctionName,
           "The percent of " + costFunctionName, costPercent);
       }
     }
@@ -991,7 +993,6 @@ public class StochasticLoadBalancer extends BaseLoadBalancer {
       // Don't let this single balance move more than the max moves.
       // This allows better scaling to accurately represent the actual cost of a move.
       if (moveCost > maxMoves) {
-        LOG.info("Calculated moves exceed maxMoves {}. Greatly increasing move cost. ", maxMoves);
         return 1000000;   // return a number much greater than any of the other cost
       }
 

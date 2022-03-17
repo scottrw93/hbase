@@ -20,6 +20,7 @@ package org.apache.hadoop.hbase.master.balancer;
 import static org.junit.Assert.assertTrue;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.HashSet;
 import java.util.Hashtable;
 import java.util.Iterator;
@@ -60,7 +61,6 @@ import org.slf4j.LoggerFactory;
 
 @Category({ MiscTests.class, MediumTests.class })
 @FixMethodOrder(MethodSorters.NAME_ASCENDING)
-@Ignore
 public class TestStochasticBalancerJmxMetrics extends BalancerTestBase {
 
   @ClassRule
@@ -95,6 +95,7 @@ public class TestStochasticBalancerJmxMetrics extends BalancerTestBase {
 
     conf.setClass("hbase.util.ip.to.rack.determiner", MockMapping.class, DNSToSwitchMapping.class);
     conf.setFloat("hbase.master.balancer.stochastic.maxMovePercent", 0.75f);
+//    conf.setFloat("hbase.master.balancer.stochastic.moveCost", 0);
     conf.setFloat("hbase.regions.slop", 0.0f);
     conf.set(CoprocessorHost.REGIONSERVER_COPROCESSOR_CONF_KEY, JMXListener.class.getName());
     Random rand = new Random();
@@ -130,6 +131,7 @@ public class TestStochasticBalancerJmxMetrics extends BalancerTestBase {
    */
   @Test
   public void testJmxMetrics_EnsembleMode() throws Exception {
+
     loadBalancer = new StochasticLoadBalancer();
 
     conf.setBoolean(HConstants.HBASE_MASTER_LOADBALANCE_BYTABLE, false);
@@ -138,14 +140,16 @@ public class TestStochasticBalancerJmxMetrics extends BalancerTestBase {
     TableName tableName = HConstants.ENSEMBLE_TABLE_NAME;
     Map<ServerName, List<RegionInfo>> clusterState = mockClusterServers(mockCluster_ensemble);
     loadBalancer.balanceTable(tableName, clusterState);
+    Thread.sleep(Duration.ofSeconds(5).toMillis());
 
     String[] tableNames = new String[] { tableName.getNameAsString() };
     String[] functionNames = loadBalancer.getCostFunctionNames();
+
     Set<String> jmxMetrics = readJmxMetricsWithRetry();
     Set<String> expectedMetrics = getExpectedJmxMetrics(tableNames, functionNames);
 
-    // printMetrics(jmxMetrics, "existing metrics in ensemble mode");
-    // printMetrics(expectedMetrics, "expected metrics in ensemble mode");
+     printMetrics(jmxMetrics, "existing metrics in ensemble mode");
+     printMetrics(expectedMetrics, "expected metrics in ensemble mode");
 
     // assert that every expected is in the JMX
     for (String expected : expectedMetrics) {
@@ -159,6 +163,7 @@ public class TestStochasticBalancerJmxMetrics extends BalancerTestBase {
    */
   @Test
   public void testJmxMetrics_PerTableMode() throws Exception {
+
     loadBalancer = new StochasticLoadBalancer();
 
     conf.setBoolean(HConstants.HBASE_MASTER_LOADBALANCE_BYTABLE, true);
@@ -174,23 +179,25 @@ public class TestStochasticBalancerJmxMetrics extends BalancerTestBase {
     TableName tableName = TableName.valueOf(TABLE_NAME_1);
     Map<ServerName, List<RegionInfo>> clusterState = mockClusterServers(mockCluster_pertable_1);
     loadBalancer.balanceTable(tableName, clusterState);
-
+    Thread.sleep(Duration.ofSeconds(3).toMillis());
     // table 2
     tableName = TableName.valueOf(TABLE_NAME_2);
     clusterState = mockClusterServers(mockCluster_pertable_2);
     loadBalancer.balanceTable(tableName, clusterState);
+    Thread.sleep(Duration.ofSeconds(3).toMillis());
 
     // table hbase:namespace
     tableName = TableName.valueOf(TABLE_NAME_NAMESPACE);
     clusterState = mockClusterServers(mockCluster_pertable_namespace);
     loadBalancer.balanceTable(tableName, clusterState);
 
+    Thread.sleep(Duration.ofSeconds(5).toMillis());
     String[] tableNames = new String[] { TABLE_NAME_1, TABLE_NAME_2, TABLE_NAME_NAMESPACE };
     Set<String> jmxMetrics = readJmxMetricsWithRetry();
     Set<String> expectedMetrics = getExpectedJmxMetrics(tableNames, functionNames);
 
-    // printMetrics(jmxMetrics, "existing metrics in per-table mode");
-    // printMetrics(expectedMetrics, "expected metrics in per-table mode");
+     printMetrics(jmxMetrics, "existing metrics in per-table mode");
+     printMetrics(expectedMetrics, "expected metrics in per-table mode");
 
     // assert that every expected is in the JMX
     for (String expected : expectedMetrics) {
@@ -202,6 +209,7 @@ public class TestStochasticBalancerJmxMetrics extends BalancerTestBase {
   private Set<String> readJmxMetricsWithRetry() throws IOException {
     final int count = 0;
     for (int i = 0; i < 10; i++) {
+
       Set<String> metrics = readJmxMetrics();
       if (metrics != null) {
         return metrics;
@@ -268,6 +276,7 @@ public class TestStochasticBalancerJmxMetrics extends BalancerTestBase {
 
     for (String tableName : tableNames) {
       ret.add(StochasticLoadBalancer.composeAttributeName(tableName, "Overall"));
+      ret.add(StochasticLoadBalancer.composeAttributeName(tableName, "Imbalance"));
       for (String functionName : functionNames) {
         String metricsName = StochasticLoadBalancer.composeAttributeName(tableName, functionName);
         ret.add(metricsName);
