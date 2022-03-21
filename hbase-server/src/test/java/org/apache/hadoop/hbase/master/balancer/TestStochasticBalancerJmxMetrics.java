@@ -20,7 +20,6 @@ package org.apache.hadoop.hbase.master.balancer;
 import static org.junit.Assert.assertTrue;
 
 import java.io.IOException;
-import java.time.Duration;
 import java.util.HashSet;
 import java.util.Hashtable;
 import java.util.Iterator;
@@ -28,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
 import javax.management.MBeanAttributeInfo;
 import javax.management.MBeanInfo;
 import javax.management.MBeanServerConnection;
@@ -52,7 +52,6 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.ClassRule;
 import org.junit.FixMethodOrder;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runners.MethodSorters;
@@ -140,7 +139,6 @@ public class TestStochasticBalancerJmxMetrics extends BalancerTestBase {
     TableName tableName = HConstants.ENSEMBLE_TABLE_NAME;
     Map<ServerName, List<RegionInfo>> clusterState = mockClusterServers(mockCluster_ensemble);
     loadBalancer.balanceTable(tableName, clusterState);
-    Thread.sleep(Duration.ofSeconds(5).toMillis());
 
     String[] tableNames = new String[] { tableName.getNameAsString() };
     String[] functionNames = loadBalancer.getCostFunctionNames();
@@ -179,19 +177,19 @@ public class TestStochasticBalancerJmxMetrics extends BalancerTestBase {
     TableName tableName = TableName.valueOf(TABLE_NAME_1);
     Map<ServerName, List<RegionInfo>> clusterState = mockClusterServers(mockCluster_pertable_1);
     loadBalancer.balanceTable(tableName, clusterState);
-    Thread.sleep(Duration.ofSeconds(3).toMillis());
+
     // table 2
     tableName = TableName.valueOf(TABLE_NAME_2);
     clusterState = mockClusterServers(mockCluster_pertable_2);
     loadBalancer.balanceTable(tableName, clusterState);
-    Thread.sleep(Duration.ofSeconds(3).toMillis());
+
 
     // table hbase:namespace
     tableName = TableName.valueOf(TABLE_NAME_NAMESPACE);
     clusterState = mockClusterServers(mockCluster_pertable_namespace);
     loadBalancer.balanceTable(tableName, clusterState);
 
-    Thread.sleep(Duration.ofSeconds(5).toMillis());
+
     String[] tableNames = new String[] { TABLE_NAME_1, TABLE_NAME_2, TABLE_NAME_NAMESPACE };
     Set<String> jmxMetrics = readJmxMetricsWithRetry();
     Set<String> expectedMetrics = getExpectedJmxMetrics(tableNames, functionNames);
@@ -211,7 +209,7 @@ public class TestStochasticBalancerJmxMetrics extends BalancerTestBase {
     for (int i = 0; i < 10; i++) {
 
       Set<String> metrics = readJmxMetrics();
-      if (metrics != null) {
+      if (metrics != null && metrics.size() > 2) {
         return metrics;
       }
       LOG.warn("Failed to get jmxmetrics... sleeping, retrying; " + i + " of " + count + " times");
@@ -227,6 +225,8 @@ public class TestStochasticBalancerJmxMetrics extends BalancerTestBase {
     JMXConnector connector = null;
     ObjectName target = null;
     MBeanServerConnection mb = null;
+    CountDownLatch latch = new CountDownLatch(1);
+
     try {
       connector =
           JMXConnectorFactory.connect(JMXListener.buildJMXServiceURL(connectorPort, connectorPort));

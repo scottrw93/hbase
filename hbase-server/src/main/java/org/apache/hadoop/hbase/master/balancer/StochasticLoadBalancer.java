@@ -512,6 +512,7 @@ public class StochasticLoadBalancer extends BaseLoadBalancer {
     final String initFunctionTotalCosts = totalCostsPerFunc();
     // Perform a stochastic walk to see if we can get a good fit.
     long step;
+    int moveCostLogCounter = 0;
 
     for (step = 0; step < computedMaxSteps; step++) {
       Cluster.Action action = nextAction(cluster);
@@ -534,7 +535,8 @@ public class StochasticLoadBalancer extends BaseLoadBalancer {
         System.arraycopy(tempFunctionCosts, 0, curFunctionCosts, 0, curFunctionCosts.length);
       } else {
         //LOG hidden move cost if greatly impacting ability to find better plan
-        logMoveCosts(newCost, tempFunctionCosts);
+        logMoveCosts(newCost, tempFunctionCosts, moveCostLogCounter);
+        moveCostLogCounter++;
 
         // Put things back the way they were before.
         // TODO: undo by remembering old values
@@ -609,15 +611,19 @@ public class StochasticLoadBalancer extends BaseLoadBalancer {
     }
   }
 
-  private void logMoveCosts(double currentCost, double [] currentFunctionCosts){
+  private void logMoveCosts(double currentCost, double [] currentFunctionCosts, int logCount){
+    if (logCount > 5){
+      // no op - so as to not flood the logs
+      return;
+    }
     for (int i = 0; i < costFunctions.size(); i++) {
       CostFunction costFunction = costFunctions.get(i);
       if (costFunction instanceof MoveCostFunction){
         String costFunctionName = costFunction.getClass().getSimpleName();
         double moveCost = currentFunctionCosts[i];
-        double costPercent = (currentCost == 0) ? 0 : (moveCost/ currentCost);
+        double costPercent = (currentCost == 0) ? 0 : (moveCost/ currentCost) * 100;
         if (costPercent > .50 ){
-          LOG.info("{} greatly impacting overall cost of improvement plan. currentCost={} percentageOfCost={}. Consider lowering moveCost multiplier.", costFunctionName, moveCost, costPercent );
+          LOG.info("{} may be impacting the ability to find an improved plan. calculatedMoveCost={} percentageOfPlanCost={}%. Consider lowering moveCost multiplier.", costFunctionName, moveCost, costPercent );
           break;
         }
       }
