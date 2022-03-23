@@ -18,7 +18,6 @@
 package org.apache.hadoop.hbase.master.balancer;
 
 import static org.junit.Assert.assertTrue;
-
 import java.io.IOException;
 import java.util.HashSet;
 import java.util.Hashtable;
@@ -27,7 +26,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
-import java.util.concurrent.CountDownLatch;
 import javax.management.MBeanAttributeInfo;
 import javax.management.MBeanInfo;
 import javax.management.MBeanServerConnection;
@@ -94,7 +92,6 @@ public class TestStochasticBalancerJmxMetrics extends BalancerTestBase {
 
     conf.setClass("hbase.util.ip.to.rack.determiner", MockMapping.class, DNSToSwitchMapping.class);
     conf.setFloat("hbase.master.balancer.stochastic.maxMovePercent", 0.75f);
-//    conf.setFloat("hbase.master.balancer.stochastic.moveCost", 0);
     conf.setFloat("hbase.regions.slop", 0.0f);
     conf.set(CoprocessorHost.REGIONSERVER_COPROCESSOR_CONF_KEY, JMXListener.class.getName());
     Random rand = new Random();
@@ -143,7 +140,7 @@ public class TestStochasticBalancerJmxMetrics extends BalancerTestBase {
     String[] tableNames = new String[] { tableName.getNameAsString() };
     String[] functionNames = loadBalancer.getCostFunctionNames();
 
-    Set<String> jmxMetrics = readJmxMetricsWithRetry();
+    Set<String> jmxMetrics = readJmxMetricsWithRetry(functionNames.length + 1);
     Set<String> expectedMetrics = getExpectedJmxMetrics(tableNames, functionNames);
 
      printMetrics(jmxMetrics, "existing metrics in ensemble mode");
@@ -169,9 +166,10 @@ public class TestStochasticBalancerJmxMetrics extends BalancerTestBase {
 
     // NOTE the size is normally set in setClusterMetrics, for test purpose, we set it manually
     // Tables: hbase:namespace, table1, table2
-    // Functions: costFunctions, overall
+    // Functions: costFunctions, overall, imbalance
     String[] functionNames = loadBalancer.getCostFunctionNames();
-    loadBalancer.updateMetricsSize(3 * (functionNames.length + 1));
+
+    loadBalancer.updateMetricsSize(3 * (functionNames.length + 2));
 
     // table 1
     TableName tableName = TableName.valueOf(TABLE_NAME_1);
@@ -191,11 +189,11 @@ public class TestStochasticBalancerJmxMetrics extends BalancerTestBase {
 
 
     String[] tableNames = new String[] { TABLE_NAME_1, TABLE_NAME_2, TABLE_NAME_NAMESPACE };
-    Set<String> jmxMetrics = readJmxMetricsWithRetry();
+    Set<String> jmxMetrics = readJmxMetricsWithRetry(3 * (functionNames.length + 2));
     Set<String> expectedMetrics = getExpectedJmxMetrics(tableNames, functionNames);
 
-     printMetrics(jmxMetrics, "existing metrics in per-table mode");
-     printMetrics(expectedMetrics, "expected metrics in per-table mode");
+    printMetrics(jmxMetrics, "existing metrics in per-table mode");
+    printMetrics(expectedMetrics, "expected metrics in per-table mode");
 
     // assert that every expected is in the JMX
     for (String expected : expectedMetrics) {
@@ -204,12 +202,13 @@ public class TestStochasticBalancerJmxMetrics extends BalancerTestBase {
     }
   }
 
-  private Set<String> readJmxMetricsWithRetry() throws IOException {
+  private Set<String> readJmxMetricsWithRetry(int expectedMetricsCount) throws IOException {
     final int count = 0;
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 20; i++) {
 
       Set<String> metrics = readJmxMetrics();
-      if (metrics != null && metrics.size() > 2) {
+
+      if (metrics != null && metrics.size() >= expectedMetricsCount){
         return metrics;
       }
       LOG.warn("Failed to get jmxmetrics... sleeping, retrying; " + i + " of " + count + " times");
@@ -225,7 +224,6 @@ public class TestStochasticBalancerJmxMetrics extends BalancerTestBase {
     JMXConnector connector = null;
     ObjectName target = null;
     MBeanServerConnection mb = null;
-    CountDownLatch latch = new CountDownLatch(1);
 
     try {
       connector =
@@ -295,5 +293,6 @@ public class TestStochasticBalancerJmxMetrics extends BalancerTestBase {
     for (String str : metrics) {
       LOG.info(" ++++ " + str);
     }
+
   }
 }
