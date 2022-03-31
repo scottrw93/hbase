@@ -41,7 +41,9 @@
     <modules>
         <module>hbase-shaded-client-byo-hadoop</module>
         <module>hbase-shaded-client</module>
+        <module>hbase-shaded-client-provided-dependencies</module>
         <module>hbase-shaded-mapreduce</module>
+        <module>hbase-shaded-mapreduce-provided-dependencies</module>
         <module>hbase-shaded-testing-util</module>
         <module>hbase-shaded-testing-util-tester</module>
         <module>hbase-shaded-check-invariants</module>
@@ -134,6 +136,7 @@
                                 <shadeTestJar>false</shadeTestJar>
                                 <artifactSet>
                                     <excludes>
+                                        <exclude>org.apache.hbase:hbase-shaded-client-byo-hadoop</exclude>
                                         <!-- exclude J2EE modules that come in for JDK11+ (since
                                              hadoop-3.2.0) or modules that come in for JDK8+ but
                                              need not be included -->
