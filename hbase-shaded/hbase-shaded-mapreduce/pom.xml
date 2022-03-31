@@ -169,6 +169,20 @@
     </dependencies>
 
     <profiles>
+        <profile>
+          <id>include-hbase-client</id>
+          <activation>
+            <activeByDefault>true</activeByDefault>
+          </activation>
+          <dependencies>
+            <dependency>
+              <groupId>org.apache.hbase</groupId>
+              <artifactId>hbase-shaded-client-byo-hadoop</artifactId>
+              <scope>provided</scope>
+            </dependency>
+          </dependencies>
+        </profile>
+
         <!-- These hadoop profiles should be derived from those in the hbase-mapreduce
              module. Essentially, you must list the same hadoop-* dependencies
              since provided dependencies are not transitively included.
