@@ -123,7 +123,7 @@
       <artifactId>hbase-metrics-api</artifactId>
       <scope>provided</scope>
     </dependency>
-    
+
     <!--
       We want to ensure needed hadoop bits are at provided scope for our shaded
       artifact, so we list them below in hadoop specific profiles.
