@@ -387,8 +387,11 @@ public final class SnapshotManifest {
    * regions format.
    */
   private void load() throws IOException {
+    LOG.info("Loading manifest from {}", workingDir);
+    LOG.info("Using SnapshotDescriptor {}", desc);
     switch (getSnapshotFormat(desc)) {
       case SnapshotManifestV1.DESCRIPTOR_VERSION: {
+        LOG.info("Loading v1 snapshot");
         this.htd = FSTableDescriptors.getTableDescriptorFromFs(workingDirFs, workingDir);
         ThreadPoolExecutor tpool = createExecutor("SnapshotManifestLoader");
         try {
@@ -400,11 +403,14 @@ public final class SnapshotManifest {
         break;
       }
       case SnapshotManifestV2.DESCRIPTOR_VERSION: {
+        LOG.info("Loading v2 snapshot");
         SnapshotDataManifest dataManifest = readDataManifest();
         if (dataManifest != null) {
+          LOG.info("SnapshotDataManifest is non-null: {}", dataManifest);
           htd = ProtobufUtil.toTableDescriptor(dataManifest.getTableSchema());
           regionManifests = dataManifest.getRegionManifestsList();
         } else {
+          LOG.info("SnapshotDataManifest is null, loading compatibility");
           // Compatibility, load the v1 regions
           // This happens only when the snapshot is in-progress and the cache wants to refresh.
           List<SnapshotRegionManifest> v1Regions, v2Regions;
@@ -412,8 +418,10 @@ public final class SnapshotManifest {
           try {
             v1Regions = SnapshotManifestV1.loadRegionManifests(conf, tpool, rootFs,
                 workingDir, desc);
+            LOG.info("Got {} regions from v1", v1Regions);
             v2Regions = SnapshotManifestV2.loadRegionManifests(conf, tpool, rootFs,
                 workingDir, desc, manifestSizeLimit);
+            LOG.info("Got {} regions from v2", v2Regions);
           } catch (InvalidProtocolBufferException e) {
             throw new CorruptedSnapshotException("unable to parse region manifest " +
                 e.getMessage(), e);
