@@ -595,11 +595,14 @@ public final class SnapshotManifest {
    * Read the SnapshotDataManifest file
    */
   private SnapshotDataManifest readDataManifest() throws IOException {
-    try (FSDataInputStream in = workingDirFs.open(new Path(workingDir, DATA_MANIFEST_NAME))) {
+    Path path = new Path(workingDir, DATA_MANIFEST_NAME);
+    LOG.info("Loading data manifest from path {}", path);
+    try (FSDataInputStream in = workingDirFs.open(path)) {
       CodedInputStream cin = CodedInputStream.newInstance(in);
       cin.setSizeLimit(manifestSizeLimit);
       return SnapshotDataManifest.parseFrom(cin);
     } catch (FileNotFoundException e) {
+      LOG.info("FileNotFoundException reading data manifest with fs={}", workingDirFs, e);
       return null;
     } catch (InvalidProtocolBufferException e) {
       throw new CorruptedSnapshotException("unable to parse data manifest " + e.getMessage(), e);
