@@ -23,6 +23,8 @@ import static org.apache.hadoop.hbase.ipc.CallEvent.Type.TIMEOUT;
 import static org.apache.hadoop.hbase.ipc.IPCUtil.setCancelled;
 import static org.apache.hadoop.hbase.ipc.IPCUtil.toIOE;
 
+import java.net.InetSocketAddress;
+import java.net.UnknownHostException;
 import java.io.IOException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -280,16 +282,16 @@ class NettyRpcConnection extends RpcConnection {
 
   private ChannelFuture connect() throws UnknownHostException {
     LOG.trace("Connecting to {}", remoteId.getAddress());
-    InetSocketAddress remoteAddr = getRemoteInetAddress(rpcClient.metrics);
     Bootstrap bootstrap = new Bootstrap().group(rpcClient.group.next())
       .channel(rpcClient.channelClass).option(ChannelOption.TCP_NODELAY, rpcClient.isTcpNoDelay())
       .option(ChannelOption.SO_KEEPALIVE, rpcClient.tcpKeepAlive)
       .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, rpcClient.connectTO).handler(
-        new HBaseClientPipelineFactory(remoteAddr.getHostString(), remoteAddr.getPort(), conf));
+        new HBaseClientPipelineFactory(remoteId.getAddress().getHostString(),
+          remoteId.getAddress().getPort(), conf));
 
     bootstrap.validate();
 
-    return bootstrap.localAddress(rpcClient.localAddr).remoteAddress(remoteAddr).connect()
+    return bootstrap.localAddress(rpcClient.localAddr).remoteAddress(remoteId.getAddress()).connect()
       .addListener(new ChannelFutureListener() {
         @Override
         public void operationComplete(ChannelFuture future) {
