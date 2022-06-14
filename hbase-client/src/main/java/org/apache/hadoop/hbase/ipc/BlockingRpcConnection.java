@@ -628,7 +628,11 @@ class BlockingRpcConnection extends RpcConnection implements Runnable {
       // from here, we do not throw any exception to upper layer as the call has been tracked in
       // the pending calls map.
       try {
-        call.callStats.setRequestSizeBytes(write(this.out, requestHeader, call.param, cellBlock));
+        int size = write(this.out, requestHeader, call.param, cellBlock);
+        call.callStats.setRequestSizeBytes(size);
+        if (LOG.isTraceEnabled()) {
+          LOG.trace("Finished writing request of size {} for call {}", size, call.toShortString());
+        }
       } catch (Throwable t) {
         if(LOG.isTraceEnabled()) {
           LOG.trace("Error while writing {}", call.toShortString());
