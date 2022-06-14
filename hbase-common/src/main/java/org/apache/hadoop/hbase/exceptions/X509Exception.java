@@ -35,7 +35,7 @@ public class X509Exception extends Exception {
     super(message, cause);
   }
 
-  public static class KeyManagerException extends org.apache.zookeeper.common.X509Exception {
+  public static class KeyManagerException extends X509Exception {
 
     public KeyManagerException(String message) {
       super(message);
@@ -47,7 +47,7 @@ public class X509Exception extends Exception {
 
   }
 
-  public static class TrustManagerException extends org.apache.zookeeper.common.X509Exception {
+  public static class TrustManagerException extends X509Exception {
 
     public TrustManagerException(String message) {
       super(message);
@@ -59,7 +59,7 @@ public class X509Exception extends Exception {
 
   }
 
-  public static class SSLContextException extends org.apache.zookeeper.common.X509Exception {
+  public static class SSLContextException extends X509Exception {
 
     public SSLContextException(String message) {
       super(message);
