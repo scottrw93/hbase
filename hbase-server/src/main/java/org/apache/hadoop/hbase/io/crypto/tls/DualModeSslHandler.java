@@ -23,18 +23,18 @@ public class DualModeSslHandler extends OptionalSslHandler {
 
   @Override protected void decode(ChannelHandlerContext context, ByteBuf in, List<Object> out)
     throws Exception {
-    LOG.debug("decoding message for session");
+    LOG.debug("decoding message for channel {}", context.channel());
     super.decode(context, in, out);
   }
 
   @Override protected ChannelHandler newNonSslHandler(ChannelHandlerContext context) {
-    LOG.debug("creating NON-ssl handler for session");
+    LOG.debug("creating NON-ssl handler for channel {}", context.channel());
     return super.newNonSslHandler(context);
   }
 
   @Override
   protected SslHandler newSslHandler(ChannelHandlerContext context, SslContext sslContext) {
-    LOG.debug("creating ssl handler for session");
+    LOG.debug("creating ssl handler for channel {}", context.channel());
     SslHandler handler = super.newSslHandler(context, sslContext);
     Future<Channel> handshakeFuture = handler.handshakeFuture();
     handshakeFuture.addListener(new CertificateVerifier(handler));
