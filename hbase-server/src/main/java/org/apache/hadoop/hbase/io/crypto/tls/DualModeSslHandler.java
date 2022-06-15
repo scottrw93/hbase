@@ -1,5 +1,7 @@
 package org.apache.hadoop.hbase.io.crypto.tls;
 
+import org.apache.hbase.thirdparty.io.netty.buffer.ByteBuf;
+import org.apache.hbase.thirdparty.io.netty.channel.ChannelHandler;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -9,6 +11,7 @@ import org.apache.hbase.thirdparty.io.netty.handler.ssl.OptionalSslHandler;
 import org.apache.hbase.thirdparty.io.netty.handler.ssl.SslContext;
 import org.apache.hbase.thirdparty.io.netty.handler.ssl.SslHandler;
 import org.apache.hbase.thirdparty.io.netty.util.concurrent.Future;
+import java.util.List;
 
 @InterfaceAudience.Private
 public class DualModeSslHandler extends OptionalSslHandler {
@@ -16,6 +19,17 @@ public class DualModeSslHandler extends OptionalSslHandler {
 
   public DualModeSslHandler(SslContext sslContext) {
     super(sslContext);
+  }
+
+  @Override protected void decode(ChannelHandlerContext context, ByteBuf in, List<Object> out)
+    throws Exception {
+    LOG.debug("decoding message for session");
+    super.decode(context, in, out);
+  }
+
+  @Override protected ChannelHandler newNonSslHandler(ChannelHandlerContext context) {
+    LOG.debug("creating NON-ssl handler for session");
+    return super.newNonSslHandler(context);
   }
 
   @Override
