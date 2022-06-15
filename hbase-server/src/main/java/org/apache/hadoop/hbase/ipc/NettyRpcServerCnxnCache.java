@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -17,43 +17,29 @@
  */
 package org.apache.hadoop.hbase.ipc;
 
-import org.apache.hbase.thirdparty.io.netty.buffer.ByteBuf;
+import org.apache.yetus.audience.InterfaceAudience;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hbase.thirdparty.io.netty.channel.Channel;
 import org.apache.hbase.thirdparty.io.netty.channel.ChannelHandlerContext;
-import org.apache.hbase.thirdparty.io.netty.channel.ChannelPipeline;
-import org.apache.hbase.thirdparty.io.netty.channel.SimpleChannelInboundHandler;
+import org.apache.hbase.thirdparty.io.netty.channel.ChannelInboundHandlerAdapter;
+import org.apache.hbase.thirdparty.io.netty.util.AttributeKey;
 
-import java.nio.ByteBuffer;
-
-import org.apache.yetus.audience.InterfaceAudience;
-import static org.apache.hadoop.hbase.ipc.NettyRpcServer.CONNECTION_ATTRIBUTE;
-
-/**
- * Handle connection preamble.
- * @since 2.0.0`
- */
 @InterfaceAudience.Private
-class NettyRpcServerPreambleHandler extends SimpleChannelInboundHandler<ByteBuf> {
-
+public class NettyRpcServerCnxnCache  extends ChannelInboundHandlerAdapter {
+  private static final Logger LOG = LoggerFactory.getLogger(NettyRpcServerCnxnCache.class);
   private final NettyRpcServer rpcServer;
+  private final AttributeKey<NettyServerRpcConnection> cacheName;
 
-  public NettyRpcServerPreambleHandler(NettyRpcServer rpcServer) {
+  public NettyRpcServerCnxnCache(NettyRpcServer rpcServer, AttributeKey<NettyServerRpcConnection> cacheName) {
     this.rpcServer = rpcServer;
+    this.cacheName = cacheName;
   }
 
-  @Override
-  protected void channelRead0(ChannelHandlerContext ctx, ByteBuf msg) throws Exception {
-    NettyServerRpcConnection conn = ctx.channel().attr(CONNECTION_ATTRIBUTE).get();
-    ByteBuffer buf = ByteBuffer.allocate(msg.readableBytes());
-    msg.readBytes(buf);
-    buf.flip();
-    if (!conn.processPreamble(buf)) {
-      conn.close();
-      return;
-    }
-    ChannelPipeline p = ctx.pipeline();
-    p.remove(this);
-    p.remove("preambleDecoder");
+  @Override public void channelActive(ChannelHandlerContext ctx) throws Exception {
+    NettyServerRpcConnection conn = createNettyServerRpcConnection(ctx.channel());
+    ctx.channel().attr(cacheName).getAndSet(conn);
+    super.channelActive(ctx);
   }
 
   protected NettyServerRpcConnection createNettyServerRpcConnection(Channel channel) {

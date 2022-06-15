@@ -32,7 +32,7 @@ import org.apache.hbase.thirdparty.io.netty.handler.codec.CorruptedFrameExceptio
 
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.RPCProtos;
-
+import static org.apache.hadoop.hbase.ipc.NettyRpcServer.CONNECTION_ATTRIBUTE;
 
 /**
  * Decoder for extracting frame
@@ -52,17 +52,13 @@ public class NettyRpcFrameDecoder extends ByteToMessageDecoder {
     this.maxFrameLength = maxFrameLength;
   }
 
-  private NettyServerRpcConnection connection;
-
-  void setConnection(NettyServerRpcConnection connection) {
-    this.connection = connection;
-  }
-
   @Override
   protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out)
     throws Exception {
+    NettyServerRpcConnection connection =
+      ctx.channel().attr(CONNECTION_ATTRIBUTE).get();
     if (requestTooBig) {
-      handleTooBigRequest(in);
+      handleTooBigRequest(connection, in);
       return;
     }
 
@@ -87,7 +83,7 @@ public class NettyRpcFrameDecoder extends ByteToMessageDecoder {
       NettyRpcServer.LOG.warn(requestTooBigMessage);
 
       if (connection.connectionHeaderRead) {
-        handleTooBigRequest(in);
+        handleTooBigRequest(connection, in);
         return;
       }
       ctx.channel().close();
@@ -105,7 +101,7 @@ public class NettyRpcFrameDecoder extends ByteToMessageDecoder {
     out.add(in.readRetainedSlice(frameLengthInt));
   }
 
-  private void handleTooBigRequest(ByteBuf in) throws IOException {
+  private void handleTooBigRequest(NettyServerRpcConnection connection, ByteBuf in) throws IOException {
     in.skipBytes(FRAME_LENGTH_FIELD_LENGTH);
     in.markReaderIndex();
     int preIndex = in.readerIndex();

@@ -19,14 +19,12 @@ package org.apache.hadoop.hbase.io.crypto.tls;
 
 import static java.util.Objects.requireNonNull;
 import static org.apache.hadoop.hbase.io.crypto.tls.X509Util.CONFIG_PREFIX;
-
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import javax.net.ssl.SSLContext;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.yetus.audience.InterfaceAudience;
-
 import org.apache.hbase.thirdparty.io.netty.handler.ssl.ClientAuth;
 import org.apache.hbase.thirdparty.io.netty.handler.ssl.IdentityCipherSuiteFilter;
 import org.apache.hbase.thirdparty.io.netty.handler.ssl.JdkSslContext;
@@ -40,6 +38,8 @@ public class SSLContextAndOptions {
   private final String[] enabledProtocols;
   private final List<String> cipherSuitesAsList;
   private final SSLContext sslContext;
+  private final String requiredCommonNameString;
+  private final ClientAuth clientAuth;
 
   /**
    * Note: constructor is intentionally package-private, only the X509Util class should be creating
@@ -52,6 +52,8 @@ public class SSLContextAndOptions {
     this.enabledProtocols = getEnabledProtocols(requireNonNull(config), sslContext);
     String[] ciphers = getCipherSuites(config);
     this.cipherSuitesAsList = Collections.unmodifiableList(Arrays.asList(ciphers));
+    this.clientAuth = config.getEnum(CONFIG_PREFIX + "auth.level", ClientAuth.NONE);
+    this.requiredCommonNameString = config.get(CONFIG_PREFIX + "auth.commonNamePart");
   }
 
   public SSLContext getSSLContext() {
@@ -60,7 +62,9 @@ public class SSLContextAndOptions {
 
   public SslContext createNettyJdkSslContext(SSLContext sslContext, boolean isClientSocket) {
     return new JdkSslContext(sslContext, isClientSocket, cipherSuitesAsList,
-      IdentityCipherSuiteFilter.INSTANCE, null, ClientAuth.NONE, enabledProtocols, false);
+      IdentityCipherSuiteFilter.INSTANCE, null,
+      isClientSocket ? ClientAuth.NONE : clientAuth,
+      enabledProtocols, false);
   }
 
   private String[] getEnabledProtocols(final Configuration config, final SSLContext sslContext) {
@@ -78,5 +82,9 @@ public class SSLContextAndOptions {
     } else {
       return cipherSuitesInput.split(",");
     }
+  }
+
+  public String getRequiredCommonNameString() {
+    return requiredCommonNameString;
   }
 }

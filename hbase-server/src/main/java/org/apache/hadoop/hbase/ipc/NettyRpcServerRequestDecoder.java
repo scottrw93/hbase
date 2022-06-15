@@ -23,6 +23,7 @@ import org.apache.hbase.thirdparty.io.netty.channel.ChannelInboundHandlerAdapter
 import org.apache.hbase.thirdparty.io.netty.channel.group.ChannelGroup;
 
 import org.apache.yetus.audience.InterfaceAudience;
+import static org.apache.hadoop.hbase.ipc.NettyRpcServer.CONNECTION_ATTRIBUTE;
 
 /**
  * Decoder for rpc request.
@@ -40,12 +41,6 @@ class NettyRpcServerRequestDecoder extends ChannelInboundHandlerAdapter {
     this.metrics = metrics;
   }
 
-  private NettyServerRpcConnection connection;
-
-  void setConnection(NettyServerRpcConnection connection) {
-    this.connection = connection;
-  }
-
   @Override
   public void channelActive(ChannelHandlerContext ctx) throws Exception {
     allChannels.add(ctx.channel());
@@ -59,6 +54,8 @@ class NettyRpcServerRequestDecoder extends ChannelInboundHandlerAdapter {
     ByteBuf input = (ByteBuf) msg;
     // 4 bytes length field
     metrics.receivedBytes(input.readableBytes() + 4);
+    NettyServerRpcConnection connection =
+      ctx.channel().attr(CONNECTION_ATTRIBUTE).get();
     connection.process(input);
   }
 

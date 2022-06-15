@@ -19,7 +19,6 @@ package org.apache.hadoop.hbase.ipc;
 
 import static org.apache.hadoop.hbase.io.crypto.tls.X509Util.HBASE_NETTY_RPCSERVER_TLS_ENABLED;
 import static org.apache.hadoop.hbase.io.crypto.tls.X509Util.HBASE_NETTY_RPCSERVER_TLS_SUPPORTPLAINTEXT;
-
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.net.InetSocketAddress;
@@ -29,10 +28,10 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.CellScanner;
 import org.apache.hadoop.hbase.HBaseInterfaceAudience;
 import org.apache.hadoop.hbase.Server;
-import org.apache.hadoop.hbase.monitoring.MonitoredRPCHandler;
 import org.apache.hadoop.hbase.exceptions.X509Exception;
 import org.apache.hadoop.hbase.io.crypto.tls.SSLContextAndOptions;
 import org.apache.hadoop.hbase.io.crypto.tls.X509Util;
+import org.apache.hadoop.hbase.monitoring.MonitoredRPCHandler;
 import org.apache.hadoop.hbase.regionserver.HRegionServer;
 import org.apache.hadoop.hbase.security.HBasePolicyProvider;
 import org.apache.hadoop.hbase.util.NettyEventLoopGroupConfig;
@@ -41,7 +40,6 @@ import org.apache.hadoop.security.authorize.ServiceAuthorizationManager;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import org.apache.hbase.thirdparty.com.google.protobuf.BlockingService;
 import org.apache.hbase.thirdparty.com.google.protobuf.Descriptors.MethodDescriptor;
 import org.apache.hbase.thirdparty.com.google.protobuf.Message;
@@ -57,8 +55,8 @@ import org.apache.hbase.thirdparty.io.netty.channel.group.DefaultChannelGroup;
 import org.apache.hbase.thirdparty.io.netty.channel.nio.NioEventLoopGroup;
 import org.apache.hbase.thirdparty.io.netty.channel.socket.nio.NioServerSocketChannel;
 import org.apache.hbase.thirdparty.io.netty.handler.codec.FixedLengthFrameDecoder;
-import org.apache.hbase.thirdparty.io.netty.handler.ssl.OptionalSslHandler;
 import org.apache.hbase.thirdparty.io.netty.handler.ssl.SslContext;
+import org.apache.hbase.thirdparty.io.netty.util.AttributeKey;
 import org.apache.hbase.thirdparty.io.netty.util.concurrent.DefaultThreadFactory;
 import org.apache.hbase.thirdparty.io.netty.util.concurrent.GlobalEventExecutor;
 
@@ -77,6 +75,9 @@ public class NettyRpcServer extends RpcServer {
   public static final String HBASE_NETTY_EVENTLOOP_RPCSERVER_THREADCOUNT_KEY =
     "hbase.netty.eventloop.rpcserver.thread.count";
   private static final int EVENTLOOP_THREADCOUNT_DEFAULT = 0;
+
+  static final AttributeKey<NettyServerRpcConnection> CONNECTION_ATTRIBUTE =
+    AttributeKey.valueOf("NettyServerRpcConnection");
 
   private final InetSocketAddress bindAddress;
 
@@ -118,6 +119,7 @@ public class NettyRpcServer extends RpcServer {
           ChannelPipeline pipeline = ch.pipeline();
           FixedLengthFrameDecoder preambleDecoder = new FixedLengthFrameDecoder(6);
           preambleDecoder.setSingleDecode(true);
+          pipeline.addLast("cnxnCache", new NettyRpcServerCnxnCache(NettyRpcServer.this, CONNECTION_ATTRIBUTE));
           if (conf.getBoolean(HBASE_NETTY_RPCSERVER_TLS_ENABLED, false)) {
             initSSL(pipeline, conf.getBoolean(HBASE_NETTY_RPCSERVER_TLS_SUPPORTPLAINTEXT, true));
           }
@@ -227,7 +229,7 @@ public class NettyRpcServer extends RpcServer {
       sslContextAndOptions.createNettyJdkSslContext(sslContextAndOptions.getSSLContext(), false);
 
     if (supportPlaintext) {
-      p.addLast("ssl", new OptionalSslHandler(nettySslContext));
+      p.addLast("ssl", new NettyRpcServerDualModeSslHandler(nettySslContext, sslContextAndOptions.getRequiredCommonNameString()));
       LOG.debug("Dual mode SSL handler added for channel: {}", p.channel());
     } else {
       p.addLast("ssl", nettySslContext.newHandler(p.channel().alloc()));

@@ -150,6 +150,7 @@ public class X509Util {
 
   public SSLContextAndOptions createSSLContextAndOptions()
     throws X509Exception.SSLContextException {
+    LOG.debug("Creating new SSLContextAndOptions");
     KeyManager[] keyManagers = null;
     TrustManager[] trustManagers = null;
 
