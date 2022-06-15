@@ -1,5 +1,6 @@
 package org.apache.hadoop.hbase.io.crypto.tls;
 
+import org.apache.yetus.audience.InterfaceAudience;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.hbase.thirdparty.io.netty.channel.Channel;
@@ -9,6 +10,7 @@ import org.apache.hbase.thirdparty.io.netty.handler.ssl.SslContext;
 import org.apache.hbase.thirdparty.io.netty.handler.ssl.SslHandler;
 import org.apache.hbase.thirdparty.io.netty.util.concurrent.Future;
 
+@InterfaceAudience.Private
 public class DualModeSslHandler extends OptionalSslHandler {
   private static final Logger LOG = LoggerFactory.getLogger(DualModeSslHandler.class);
 
