@@ -19,14 +19,12 @@ package org.apache.hadoop.hbase.io.crypto.tls;
 
 import static java.util.Objects.requireNonNull;
 import static org.apache.hadoop.hbase.io.crypto.tls.X509Util.CONFIG_PREFIX;
-
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import javax.net.ssl.SSLContext;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.yetus.audience.InterfaceAudience;
-
 import org.apache.hbase.thirdparty.io.netty.handler.ssl.ClientAuth;
 import org.apache.hbase.thirdparty.io.netty.handler.ssl.IdentityCipherSuiteFilter;
 import org.apache.hbase.thirdparty.io.netty.handler.ssl.JdkSslContext;
@@ -60,7 +58,9 @@ public class SSLContextAndOptions {
 
   public SslContext createNettyJdkSslContext(SSLContext sslContext, boolean isClientSocket) {
     return new JdkSslContext(sslContext, isClientSocket, cipherSuitesAsList,
-      IdentityCipherSuiteFilter.INSTANCE, null, ClientAuth.NONE, enabledProtocols, false);
+      IdentityCipherSuiteFilter.INSTANCE, null,
+      isClientSocket ? ClientAuth.NONE : ClientAuth.REQUIRE,
+      enabledProtocols, false);
   }
 
   private String[] getEnabledProtocols(final Configuration config, final SSLContext sslContext) {
