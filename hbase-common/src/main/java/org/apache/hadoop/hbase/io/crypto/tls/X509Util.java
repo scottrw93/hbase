@@ -70,6 +70,8 @@ public class X509Util {
 
   public static final String HBASE_NETTY_RPCSERVER_TLS_ENABLED =
     "hbase.netty.rpcserver.tls.enabled";
+  public static final String HBASE_NETTY_RPCCLIENT_TLS_ENABLED =
+    "hbase.netty.rpcclient.tls.enabled";
   public static final String HBASE_NETTY_RPCSERVER_TLS_SUPPORTPLAINTEXT =
     "hbase.netty.rpcserver.tls.supportplaintext";
 

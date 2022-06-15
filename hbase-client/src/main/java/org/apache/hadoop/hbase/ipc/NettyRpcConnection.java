@@ -17,15 +17,13 @@
  */
 package org.apache.hadoop.hbase.ipc;
 
-import static org.apache.hadoop.hbase.io.crypto.tls.X509Util.HBASE_NETTY_RPCSERVER_TLS_ENABLED;
+import static org.apache.hadoop.hbase.io.crypto.tls.X509Util.HBASE_NETTY_RPCCLIENT_TLS_ENABLED;
 import static org.apache.hadoop.hbase.ipc.CallEvent.Type.CANCELLED;
 import static org.apache.hadoop.hbase.ipc.CallEvent.Type.TIMEOUT;
 import static org.apache.hadoop.hbase.ipc.IPCUtil.setCancelled;
 import static org.apache.hadoop.hbase.ipc.IPCUtil.toIOE;
-
-import java.net.InetSocketAddress;
-import java.net.UnknownHostException;
 import java.io.IOException;
+import java.net.UnknownHostException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadLocalRandom;
@@ -42,11 +40,10 @@ import org.apache.hadoop.hbase.security.NettyHBaseSaslRpcClientHandler;
 import org.apache.hadoop.hbase.security.SaslChallengeDecoder;
 import org.apache.hadoop.hbase.util.Threads;
 import org.apache.hadoop.security.UserGroupInformation;
-import org.apache.hbase.thirdparty.com.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
+import org.apache.hbase.thirdparty.com.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.apache.hbase.thirdparty.com.google.protobuf.RpcCallback;
 import org.apache.hbase.thirdparty.io.netty.bootstrap.Bootstrap;
 import org.apache.hbase.thirdparty.io.netty.buffer.ByteBuf;
@@ -68,7 +65,6 @@ import org.apache.hbase.thirdparty.io.netty.util.ReferenceCountUtil;
 import org.apache.hbase.thirdparty.io.netty.util.concurrent.Future;
 import org.apache.hbase.thirdparty.io.netty.util.concurrent.FutureListener;
 import org.apache.hbase.thirdparty.io.netty.util.concurrent.Promise;
-
 import org.apache.hadoop.hbase.shaded.protobuf.generated.RPCProtos.ConnectionHeader;
 
 /**
@@ -222,7 +218,7 @@ class NettyRpcConnection extends RpcConnection {
       failInit(ch, e);
       return;
     }
-    if (conf.getBoolean(HBASE_NETTY_RPCSERVER_TLS_ENABLED, false)) {
+    if (conf.getBoolean(HBASE_NETTY_RPCCLIENT_TLS_ENABLED, false)) {
       ch.pipeline().addAfter("ssl", "saslchdecoder", new SaslChallengeDecoder());
       ch.pipeline().addAfter("saslchdecoder", "saslhandler", saslHandler);
     } else {
@@ -413,7 +409,7 @@ class NettyRpcConnection extends RpcConnection {
     @Override
     protected void initChannel(SocketChannel ch) throws X509Exception.SSLContextException {
       ChannelPipeline pipeline = ch.pipeline();
-      if (conf.getBoolean(HBASE_NETTY_RPCSERVER_TLS_ENABLED, false)) {
+      if (conf.getBoolean(HBASE_NETTY_RPCCLIENT_TLS_ENABLED, false)) {
         initSSL(pipeline);
       }
       pipeline.addLast("handler", new BufferCallBeforeInitHandler());
