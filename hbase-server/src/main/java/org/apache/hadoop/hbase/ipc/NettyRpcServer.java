@@ -225,7 +225,7 @@ public class NettyRpcServer extends RpcServer {
       sslContextAndOptions.createNettyJdkSslContext(sslContextAndOptions.getSSLContext(), false);
 
     if (supportPlaintext) {
-      p.addLast("ssl", new DualModeSslHandler(nettySslContext));
+      p.addLast("ssl", new DualModeSslHandler(nettySslContext, sslContextAndOptions.getRequiredCommonNameString()));
       LOG.debug("Dual mode SSL handler added for channel: {}", p.channel());
     } else {
       p.addLast("ssl", nettySslContext.newHandler(p.channel().alloc()));

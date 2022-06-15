@@ -1,6 +1,5 @@
 package org.apache.hadoop.hbase.io.crypto.tls;
 
-import org.apache.hbase.thirdparty.io.netty.buffer.ByteBuf;
 import org.apache.hbase.thirdparty.io.netty.channel.ChannelHandler;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.slf4j.Logger;
@@ -11,19 +10,15 @@ import org.apache.hbase.thirdparty.io.netty.handler.ssl.OptionalSslHandler;
 import org.apache.hbase.thirdparty.io.netty.handler.ssl.SslContext;
 import org.apache.hbase.thirdparty.io.netty.handler.ssl.SslHandler;
 import org.apache.hbase.thirdparty.io.netty.util.concurrent.Future;
-import java.util.List;
 
 @InterfaceAudience.Private
 public class DualModeSslHandler extends OptionalSslHandler {
   private static final Logger LOG = LoggerFactory.getLogger(DualModeSslHandler.class);
+  private String requiredCommonNameString;
 
-  public DualModeSslHandler(SslContext sslContext) {
+  public DualModeSslHandler(SslContext sslContext, String requiredCommonNameString) {
     super(sslContext);
-  }
-
-  @Override protected void decode(ChannelHandlerContext context, ByteBuf in, List<Object> out)
-    throws Exception {
-    super.decode(context, in, out);
+    this.requiredCommonNameString = requiredCommonNameString;
   }
 
   @Override protected ChannelHandler newNonSslHandler(ChannelHandlerContext context) {
@@ -36,7 +31,7 @@ public class DualModeSslHandler extends OptionalSslHandler {
     LOG.debug("creating ssl handler for channel {}", context.channel());
     SslHandler handler = super.newSslHandler(context, sslContext);
     Future<Channel> handshakeFuture = handler.handshakeFuture();
-    handshakeFuture.addListener(new CertificateVerifier(handler));
+    handshakeFuture.addListener(new CertificateVerifier(handler, requiredCommonNameString));
     return handler;
   }
 }

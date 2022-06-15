@@ -1,11 +1,11 @@
 package org.apache.hadoop.hbase.io.crypto.tls;
 
+import java.security.Principal;
 import java.security.cert.CertificateException;
-import java.security.cert.X509Certificate;
-import javax.naming.InvalidNameException;
 import javax.naming.ldap.LdapName;
 import javax.naming.ldap.Rdn;
 import javax.net.ssl.SSLEngine;
+import javax.net.ssl.SSLPeerUnverifiedException;
 import javax.net.ssl.SSLSession;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.slf4j.Logger;
@@ -20,9 +20,11 @@ public class CertificateVerifier implements GenericFutureListener<Future<Channel
   private static final Logger LOG = LoggerFactory.getLogger(CertificateVerifier.class);
 
   private final SslHandler sslHandler;
+  private String requiredCommonNameString;
 
-  CertificateVerifier(SslHandler sslHandler) {
+  CertificateVerifier(SslHandler sslHandler, String requiredCommonNameString) {
     this.sslHandler = sslHandler;
+    this.requiredCommonNameString = requiredCommonNameString;
   }
 
   @Override
@@ -31,30 +33,30 @@ public class CertificateVerifier implements GenericFutureListener<Future<Channel
       LOG.debug("Successful handshake, trying to authenticate");
       SSLEngine engine = sslHandler.engine();
       SSLSession session = engine.getSession();
-
-      try {
-        LOG.debug("Got principal for session {}", session.getPeerPrincipal());
-        verifyChain((X509Certificate[]) session.getPeerCertificates());
-      } catch (Exception e) {
-        LOG.debug("Failed to authenticate", e);
-        throw e;
-      }
-    }
-  }
-
-  private void verifyChain(X509Certificate[] chain) throws CertificateException {
-    LOG.debug("Checking {} certs", chain.length);
-    for (X509Certificate cert : chain) {
-      try {
-        LdapName name = new LdapName(cert.getSubjectX500Principal().getName());
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("Parsed ldap name {}", name);
-          for (Rdn rdn : name.getRdns()) {
-            LOG.debug("{} -> {}", rdn.getType(), rdn.getValue());
+      if (engine.getNeedClientAuth() || engine.getWantClientAuth()) {
+        try {
+          Principal principal;
+          try {
+            principal = session.getPeerPrincipal();
+          } catch (SSLPeerUnverifiedException e) {
+            if (engine.getNeedClientAuth()) {
+              throw new CertificateException("No certificate available, but client auth is required");
+            }
+            return;
           }
+
+          LOG.debug("Got principal for session {}", principal);
+          LdapName name = new LdapName(principal.getName());
+          for (Rdn rdn : name.getRdns()) {
+            if (rdn.getType().equals("CN") && rdn.getValue().toString().contains(requiredCommonNameString)) {
+              return;
+            }
+            throw new CertificateException("Missing proper CN to access this cluster");
+          }
+        } catch (Exception e) {
+          LOG.debug("Failed to authenticate", e);
+          throw e;
         }
-      } catch (InvalidNameException e) {
-        throw new CertificateException("Could not extract ldap name from cert", e);
       }
     }
   }
