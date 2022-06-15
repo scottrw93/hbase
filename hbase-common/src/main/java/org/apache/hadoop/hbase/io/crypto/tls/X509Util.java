@@ -21,20 +21,27 @@ import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.Socket;
 import java.nio.file.Files;
 import java.security.GeneralSecurityException;
 import java.security.KeyManagementException;
 import java.security.KeyStore;
 import java.security.NoSuchAlgorithmException;
 import java.security.Security;
+import java.security.cert.CertificateException;
 import java.security.cert.PKIXBuilderParameters;
 import java.security.cert.X509CertSelector;
+import java.security.cert.X509Certificate;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
+import javax.naming.InvalidNameException;
+import javax.naming.ldap.LdapName;
+import javax.naming.ldap.Rdn;
 import javax.net.ssl.CertPathTrustManagerParameters;
 import javax.net.ssl.KeyManager;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLEngine;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509ExtendedTrustManager;
@@ -301,12 +308,77 @@ public class X509Util {
 
       for (final TrustManager tm : tmf.getTrustManagers()) {
         if (tm instanceof X509ExtendedTrustManager) {
-          return (X509ExtendedTrustManager) tm;
+          return new CommonNameVerifyingTrustManager((X509ExtendedTrustManager) tm);
         }
       }
       throw new X509Exception.TrustManagerException("Couldn't find X509TrustManager");
     } catch (IOException | GeneralSecurityException | IllegalArgumentException e) {
       throw new X509Exception.TrustManagerException(e);
+    }
+  }
+
+  private static class CommonNameVerifyingTrustManager extends X509ExtendedTrustManager {
+
+    private X509ExtendedTrustManager delegate;
+
+    private CommonNameVerifyingTrustManager(X509ExtendedTrustManager delegate) {
+      this.delegate = delegate;
+    }
+
+    @Override
+    public void checkClientTrusted(X509Certificate[] chain, String authType, Socket socket)
+      throws CertificateException {
+      delegate.checkClientTrusted(chain, authType, socket);
+      verifyChain(chain);
+    }
+
+    private void verifyChain(X509Certificate[] chain) throws CertificateException {
+      for (X509Certificate cert : chain) {
+        try {
+          LdapName name = new LdapName(cert.getSubjectX500Principal().getName());
+          if (LOG.isDebugEnabled()) {
+            for (Rdn rdn : name.getRdns()) {
+              LOG.debug("{} -> {}", rdn.getType(), rdn.getValue());
+            }
+          }
+        } catch (InvalidNameException e) {
+          throw new CertificateException("Could not extract ldap name from cert", e);
+        }
+      }
+    }
+
+    @Override
+    public void checkServerTrusted(X509Certificate[] chain, String authType, Socket socket)
+      throws CertificateException {
+      delegate.checkServerTrusted(chain, authType, socket);
+    }
+
+    @Override
+    public void checkClientTrusted(X509Certificate[] chain, String authType, SSLEngine engine)
+      throws CertificateException {
+      delegate.checkClientTrusted(chain, authType, engine);
+      verifyChain(chain);
+    }
+
+    @Override
+    public void checkServerTrusted(X509Certificate[] chain, String authType, SSLEngine engine)
+      throws CertificateException {
+      delegate.checkServerTrusted(chain, authType, engine);
+    }
+
+    @Override public void checkClientTrusted(X509Certificate[] chain, String authType)
+      throws CertificateException {
+      delegate.checkClientTrusted(chain, authType);
+      verifyChain(chain);
+    }
+
+    @Override public void checkServerTrusted(X509Certificate[] chain, String authType)
+      throws CertificateException {
+      delegate.checkServerTrusted(chain, authType);
+    }
+
+    @Override public X509Certificate[] getAcceptedIssuers() {
+      return delegate.getAcceptedIssuers();
     }
   }
 }
