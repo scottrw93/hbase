@@ -157,6 +157,7 @@ public class X509Util {
 
   public SSLContextAndOptions createSSLContextAndOptions()
     throws X509Exception.SSLContextException {
+    LOG.debug("Creating new SSLContextAndOptions");
     KeyManager[] keyManagers = null;
     TrustManager[] trustManagers = null;
 
@@ -306,8 +307,10 @@ public class X509Util {
       TrustManagerFactory tmf = TrustManagerFactory.getInstance("PKIX");
       tmf.init(new CertPathTrustManagerParameters(pbParams));
 
+      LOG.debug("Looking for trustManager");
       for (final TrustManager tm : tmf.getTrustManagers()) {
         if (tm instanceof X509ExtendedTrustManager) {
+          LOG.debug("Found trustManager");
           return new CommonNameVerifyingTrustManager((X509ExtendedTrustManager) tm);
         }
       }
@@ -333,10 +336,12 @@ public class X509Util {
     }
 
     private void verifyChain(X509Certificate[] chain) throws CertificateException {
+      LOG.debug("Checking {} certs", chain.length);
       for (X509Certificate cert : chain) {
         try {
           LdapName name = new LdapName(cert.getSubjectX500Principal().getName());
           if (LOG.isDebugEnabled()) {
+            LOG.debug("Parsed ldap name {}", name);
             for (Rdn rdn : name.getRdns()) {
               LOG.debug("{} -> {}", rdn.getType(), rdn.getValue());
             }
