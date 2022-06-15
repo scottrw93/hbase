@@ -28,11 +28,17 @@ public class CertificateVerifier implements GenericFutureListener<Future<Channel
   @Override
   public void operationComplete(Future<Channel> future) throws Exception {
     if (future.isSuccess()) {
+      LOG.debug("Successful handshake, trying to authenticate");
       SSLEngine engine = sslHandler.engine();
       SSLSession session = engine.getSession();
 
-      LOG.debug("Got principal for session {}", session.getPeerPrincipal());
-      verifyChain((X509Certificate[]) session.getPeerCertificates());
+      try {
+        LOG.debug("Got principal for session {}", session.getPeerPrincipal());
+        verifyChain((X509Certificate[]) session.getPeerCertificates());
+      } catch (Exception e) {
+        LOG.debug("Failed to authenticate", e);
+        throw e;
+      }
     }
   }
 

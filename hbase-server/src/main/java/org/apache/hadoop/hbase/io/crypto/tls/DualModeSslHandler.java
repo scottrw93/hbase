@@ -23,7 +23,6 @@ public class DualModeSslHandler extends OptionalSslHandler {
 
   @Override protected void decode(ChannelHandlerContext context, ByteBuf in, List<Object> out)
     throws Exception {
-    LOG.debug("decoding message for channel {}", context.channel());
     super.decode(context, in, out);
   }
 
