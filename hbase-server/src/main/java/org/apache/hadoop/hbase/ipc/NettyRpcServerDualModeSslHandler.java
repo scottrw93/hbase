@@ -1,4 +1,4 @@
-package org.apache.hadoop.hbase.io.crypto.tls;
+package org.apache.hadoop.hbase.ipc;
 
 import org.apache.hbase.thirdparty.io.netty.channel.ChannelHandler;
 import org.apache.yetus.audience.InterfaceAudience;
@@ -12,11 +12,11 @@ import org.apache.hbase.thirdparty.io.netty.handler.ssl.SslHandler;
 import org.apache.hbase.thirdparty.io.netty.util.concurrent.Future;
 
 @InterfaceAudience.Private
-public class DualModeSslHandler extends OptionalSslHandler {
-  private static final Logger LOG = LoggerFactory.getLogger(DualModeSslHandler.class);
+public class NettyRpcServerDualModeSslHandler extends OptionalSslHandler {
+  private static final Logger LOG = LoggerFactory.getLogger(NettyRpcServerDualModeSslHandler.class);
   private String requiredCommonNameString;
 
-  public DualModeSslHandler(SslContext sslContext, String requiredCommonNameString) {
+  public NettyRpcServerDualModeSslHandler(SslContext sslContext, String requiredCommonNameString) {
     super(sslContext);
     this.requiredCommonNameString = requiredCommonNameString;
   }
@@ -31,7 +31,7 @@ public class DualModeSslHandler extends OptionalSslHandler {
     LOG.debug("creating ssl handler for channel {}", context.channel());
     SslHandler handler = super.newSslHandler(context, sslContext);
     Future<Channel> handshakeFuture = handler.handshakeFuture();
-    handshakeFuture.addListener(new CertificateVerifier(handler, requiredCommonNameString));
+    handshakeFuture.addListener(new NettyRpcServerSslCertificateVerifier(handler, requiredCommonNameString));
     return handler;
   }
 }

@@ -26,6 +26,7 @@ import org.apache.hbase.thirdparty.io.netty.channel.SimpleChannelInboundHandler;
 import java.nio.ByteBuffer;
 
 import org.apache.yetus.audience.InterfaceAudience;
+import static org.apache.hadoop.hbase.ipc.NettyRpcServer.CONNECTION_ATTRIBUTE;
 
 /**
  * Handle connection preamble.
@@ -42,7 +43,7 @@ class NettyRpcServerPreambleHandler extends SimpleChannelInboundHandler<ByteBuf>
 
   @Override
   protected void channelRead0(ChannelHandlerContext ctx, ByteBuf msg) throws Exception {
-    NettyServerRpcConnection conn = createNettyServerRpcConnection(ctx.channel());
+    NettyServerRpcConnection conn = ctx.channel().attr(CONNECTION_ATTRIBUTE).get();
     ByteBuffer buf = ByteBuffer.allocate(msg.readableBytes());
     msg.readBytes(buf);
     buf.flip();
@@ -51,8 +52,6 @@ class NettyRpcServerPreambleHandler extends SimpleChannelInboundHandler<ByteBuf>
       return;
     }
     ChannelPipeline p = ctx.pipeline();
-    ((NettyRpcFrameDecoder) p.get("frameDecoder")).setConnection(conn);
-    ((NettyRpcServerRequestDecoder) p.get("decoder")).setConnection(conn);
     p.remove(this);
     p.remove("preambleDecoder");
   }
