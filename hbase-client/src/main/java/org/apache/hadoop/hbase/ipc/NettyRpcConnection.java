@@ -433,6 +433,7 @@ class NettyRpcConnection extends RpcConnection {
         @Override
         public void operationComplete(Future<? super Channel> future) throws Exception {
           if (!future.isSuccess()) {
+            LOG.info("Got failure in handshake: {}", future.cause());
             throw new DoNotRetryIOException(future.cause());
           }
         }

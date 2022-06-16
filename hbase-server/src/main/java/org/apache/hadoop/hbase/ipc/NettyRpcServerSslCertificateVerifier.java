@@ -48,7 +48,8 @@ public class NettyRpcServerSslCertificateVerifier implements GenericFutureListen
             return;
           }
 
-          LOG.debug("Got principal for session {}", principal);
+          LOG.debug("Got principal of type {} for channel {}: {}",
+            principal.getClass().getSimpleName(), future.getNow().id(), principal.getName());
           LdapName name = new LdapName(principal.getName());
           for (Rdn rdn : name.getRdns()) {
             if (rdn.getType().equals("CN")) {
