@@ -1,14 +1,16 @@
 package org.apache.hadoop.hbase.ipc;
 
-import org.apache.hbase.thirdparty.io.netty.buffer.ByteBuf;
+import org.apache.yetus.audience.InterfaceAudience;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.apache.hbase.thirdparty.io.netty.channel.Channel;
 import org.apache.hbase.thirdparty.io.netty.channel.ChannelHandlerContext;
-import org.apache.hbase.thirdparty.io.netty.channel.SimpleChannelInboundHandler;
+import org.apache.hbase.thirdparty.io.netty.channel.ChannelInboundHandlerAdapter;
 import org.apache.hbase.thirdparty.io.netty.util.AttributeKey;
-import org.apache.yetus.audience.InterfaceAudience;
 
 @InterfaceAudience.Private
-public class NettyRpcServerCnxnCache  extends SimpleChannelInboundHandler<ByteBuf> {
+public class NettyRpcServerCnxnCache  extends ChannelInboundHandlerAdapter {
+  private static final Logger LOG = LoggerFactory.getLogger(NettyRpcServerCnxnCache.class);
   private final NettyRpcServer rpcServer;
   private final AttributeKey<NettyServerRpcConnection> cacheName;
 
@@ -17,10 +19,12 @@ public class NettyRpcServerCnxnCache  extends SimpleChannelInboundHandler<ByteBu
     this.cacheName = cacheName;
   }
 
-  @Override
-  protected void channelRead0(ChannelHandlerContext ctx, ByteBuf msg) throws Exception {
+  @Override public void channelActive(ChannelHandlerContext ctx) throws Exception {
+    LOG.debug("Creating NettyServerRpcConnection");
     NettyServerRpcConnection conn = createNettyServerRpcConnection(ctx.channel());
     ctx.channel().attr(cacheName).getAndSet(conn);
+    LOG.debug("Done");
+    super.channelActive(ctx);
   }
 
   protected NettyServerRpcConnection createNettyServerRpcConnection(Channel channel) {
