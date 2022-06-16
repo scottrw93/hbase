@@ -66,6 +66,7 @@ public class NettyRpcServerSslCertificateVerifier implements GenericFutureListen
 
   private void sendErrorAndClose(Future<Channel> future, String errorMessage) {
     Channel channel = future.getNow();
+    LOG.debug("Returning error to channel {}: {}", channel.id(), errorMessage);
     NettyServerRpcConnection connection = channel.attr(CONNECTION_ATTRIBUTE).get();
     NettyServerCall authError = connection.createCall(0, connection.service, null,
       null, null, null, 0, connection.addr, 0, null);
