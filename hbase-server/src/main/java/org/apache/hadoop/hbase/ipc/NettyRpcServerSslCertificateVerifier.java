@@ -75,7 +75,7 @@ public class NettyRpcServerSslCertificateVerifier implements GenericFutureListen
     NettyServerRpcConnection connection = channel.attr(CONNECTION_ATTRIBUTE).get();
     NettyServerCall authError = connection.createCall(0, connection.service, null,
       null, null, null, 0, connection.addr, 0, null);
-    authError.setResponse(null, null, new DoNotRetryIOException(errorMessage), errorMessage);
+    authError.setResponse(null, null, new FatalConnectionException(errorMessage), errorMessage);
     channel.writeAndFlush(authError).addListener(ChannelFutureListener.CLOSE);
   }
 }
