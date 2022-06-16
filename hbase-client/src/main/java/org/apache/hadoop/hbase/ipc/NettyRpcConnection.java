@@ -31,6 +31,7 @@ import java.util.concurrent.TimeUnit;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.DoNotRetryIOException;
 import org.apache.hadoop.hbase.exceptions.X509Exception;
 import org.apache.hadoop.hbase.io.crypto.tls.X509Util;
 import org.apache.hadoop.hbase.ipc.BufferCallBeforeInitHandler.BufferCallEvent;
@@ -64,6 +65,7 @@ import org.apache.hbase.thirdparty.io.netty.handler.timeout.ReadTimeoutHandler;
 import org.apache.hbase.thirdparty.io.netty.util.ReferenceCountUtil;
 import org.apache.hbase.thirdparty.io.netty.util.concurrent.Future;
 import org.apache.hbase.thirdparty.io.netty.util.concurrent.FutureListener;
+import org.apache.hbase.thirdparty.io.netty.util.concurrent.GenericFutureListener;
 import org.apache.hbase.thirdparty.io.netty.util.concurrent.Promise;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.RPCProtos.ConnectionHeader;
 
@@ -426,7 +428,16 @@ class NettyRpcConnection extends RpcConnection {
         sslEngine.setUseClientMode(true);
         LOG.debug("SSL engine initialized");
       }
-      pipeline.addLast("ssl", new SslHandler(sslEngine));
+      SslHandler sslHandler = new SslHandler(sslEngine);
+      sslHandler.handshakeFuture().addListener(new GenericFutureListener<Future<? super Channel>>() {
+        @Override
+        public void operationComplete(Future<? super Channel> future) throws Exception {
+          if (!future.isSuccess()) {
+            throw new DoNotRetryIOException(future.cause());
+          }
+        }
+      });
+      pipeline.addLast("ssl", sslHandler);
       LOG.info("SSL handler added for channel: {}", pipeline.channel());
     }
   }

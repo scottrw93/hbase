@@ -307,11 +307,9 @@ public class X509Util {
       TrustManagerFactory tmf = TrustManagerFactory.getInstance("PKIX");
       tmf.init(new CertPathTrustManagerParameters(pbParams));
 
-      LOG.debug("Looking for trustManager");
       for (final TrustManager tm : tmf.getTrustManagers()) {
         if (tm instanceof X509ExtendedTrustManager) {
-          LOG.debug("Found trustManager");
-          return new CommonNameVerifyingTrustManager((X509ExtendedTrustManager) tm);
+          return (X509ExtendedTrustManager) tm;
         }
       }
       throw new X509Exception.TrustManagerException("Couldn't find X509TrustManager");

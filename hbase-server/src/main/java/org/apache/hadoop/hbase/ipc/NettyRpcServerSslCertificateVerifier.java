@@ -51,8 +51,12 @@ public class NettyRpcServerSslCertificateVerifier implements GenericFutureListen
           LOG.debug("Got principal for session {}", principal);
           LdapName name = new LdapName(principal.getName());
           for (Rdn rdn : name.getRdns()) {
-            if (rdn.getType().equals("CN") && rdn.getValue().toString().contains(requiredCommonNameString)) {
-              return;
+            if (rdn.getType().equals("CN")) {
+              LOG.debug("Found CN {}", rdn.getValue());
+              LOG.debug("Looking for {}", requiredCommonNameString);
+              if (rdn.getValue().toString().contains(requiredCommonNameString)) {
+                return;
+              }
             }
             sendErrorAndClose(future, "Missing proper CN to access this cluster");
           }
