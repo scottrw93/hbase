@@ -20,10 +20,8 @@ public class NettyRpcServerCnxnCache  extends ChannelInboundHandlerAdapter {
   }
 
   @Override public void channelActive(ChannelHandlerContext ctx) throws Exception {
-    LOG.debug("Creating NettyServerRpcConnection");
     NettyServerRpcConnection conn = createNettyServerRpcConnection(ctx.channel());
     ctx.channel().attr(cacheName).getAndSet(conn);
-    LOG.debug("Done");
     super.channelActive(ctx);
   }
 

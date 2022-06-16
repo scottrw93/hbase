@@ -33,10 +33,10 @@ public class NettyRpcServerSslCertificateVerifier implements GenericFutureListen
   @Override
   public void operationComplete(Future<Channel> future) throws Exception {
     if (future.isSuccess()) {
-      LOG.debug("Successful handshake, trying to authenticate");
       SSLEngine engine = sslHandler.engine();
       SSLSession session = engine.getSession();
       if (engine.getNeedClientAuth() || engine.getWantClientAuth()) {
+      LOG.debug("Successful handshake, trying to authenticate");
         try {
           Principal principal;
           try {
@@ -59,13 +59,15 @@ public class NettyRpcServerSslCertificateVerifier implements GenericFutureListen
                 return;
               }
             }
-            sendErrorAndClose(future, "Missing proper CN to access this cluster");
           }
+          sendErrorAndClose(future, "Missing proper CN to access this cluster");
         } catch (Exception e) {
           sendErrorAndClose(future, "Failed to authenticate: " + e.getMessage());
           LOG.debug("Failed to authenticate", e);
         }
       }
+    } else {
+      LOG.debug("Got non-success future after handshake", future.cause());
     }
   }
 
