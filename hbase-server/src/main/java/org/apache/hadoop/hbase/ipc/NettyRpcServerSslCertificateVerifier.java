@@ -43,7 +43,7 @@ public class NettyRpcServerSslCertificateVerifier implements GenericFutureListen
             principal = session.getPeerPrincipal();
           } catch (SSLPeerUnverifiedException e) {
             if (engine.getNeedClientAuth()) {
-              throw new CertificateException("No certificate available, but client auth is required");
+              sendErrorAndClose(future, "No certificate available, but client auth is required");
             }
             return;
           }
