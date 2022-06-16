@@ -5,7 +5,9 @@ import org.apache.hbase.thirdparty.io.netty.channel.Channel;
 import org.apache.hbase.thirdparty.io.netty.channel.ChannelHandlerContext;
 import org.apache.hbase.thirdparty.io.netty.channel.SimpleChannelInboundHandler;
 import org.apache.hbase.thirdparty.io.netty.util.AttributeKey;
+import org.apache.yetus.audience.InterfaceAudience;
 
+@InterfaceAudience.Private
 public class NettyRpcServerCnxnCache  extends SimpleChannelInboundHandler<ByteBuf> {
   private final NettyRpcServer rpcServer;
   private final AttributeKey<NettyServerRpcConnection> cacheName;
