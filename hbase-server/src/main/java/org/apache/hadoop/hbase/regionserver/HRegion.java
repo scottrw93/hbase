@@ -5080,7 +5080,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
     }
 
     // Avoid creating an empty region with split keys [] - \x00
-    for (byte b : splitRow) {
+    for (byte b: splitRow) {
       if (b != 0) {
         return true;
       }
