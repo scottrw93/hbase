@@ -39,7 +39,6 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.math.BigDecimal;
@@ -52,6 +51,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.TreeMap;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -188,13 +188,11 @@ import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import org.apache.hbase.thirdparty.com.google.common.collect.Lists;
 import org.apache.hbase.thirdparty.com.google.protobuf.ByteString;
 import org.apache.hbase.thirdparty.io.netty.channel.EventLoopGroup;
 import org.apache.hbase.thirdparty.io.netty.channel.nio.NioEventLoopGroup;
 import org.apache.hbase.thirdparty.io.netty.channel.socket.nio.NioSocketChannel;
-
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos.CompactionDescriptor;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos.FlushDescriptor;
@@ -7940,4 +7938,37 @@ public class TestHRegion {
     assertFalse("Region lock holder should not have been interrupted", holderInterrupted.get());
   }
 
+  @Test
+  public void testPreventsIllegalSplits() throws Exception {
+    byte[][] families = {COLUMN_FAMILY_BYTES};
+
+    Configuration conf = new Configuration(CONF);
+    conf.set(KeyPrefixRegionSplitRestriction.PREFIX_LENGTH_KEY, "1");
+    conf.set(RegionSplitRestriction.RESTRICTION_TYPE_KEY,
+      RegionSplitRestriction.RESTRICTION_TYPE_KEY_PREFIX);
+
+    region = initHRegion(tableName, null, new byte[] {'1'}, method, conf, false,
+      families);
+    region.setTableDescriptor(TableDescriptorBuilder
+      .newBuilder(region.getTableDescriptor())
+        .setMaxFileSize(1) // always attempt to split to trigger relevant code path
+      .build());
+    // Re-create the split policy with new table descriptor
+    region.initialize();
+
+    for (byte[] row: HBaseTestingUtility.ROWS) {
+      byte[] rowCp = Bytes.copy(row);
+      rowCp[0] = 0x00;
+      Put put = new Put(rowCp);
+      put.addColumn(COLUMN_FAMILY_BYTES, null, rowCp);
+      region.put(put);
+    }
+
+    region.flush(true);
+
+    Optional<byte[]> split = region.checkSplit();
+    assertTrue("Expected region to be unsplittable", split.isEmpty());
+
+    region.close();
+  }
 }

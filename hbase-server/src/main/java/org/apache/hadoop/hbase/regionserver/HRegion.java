@@ -162,20 +162,6 @@ import org.apache.hadoop.hbase.regionserver.wal.WALUtil;
 import org.apache.hadoop.hbase.replication.ReplicationUtils;
 import org.apache.hadoop.hbase.replication.regionserver.ReplicationObserver;
 import org.apache.hadoop.hbase.security.User;
-import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.ClientProtos;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.ClientProtos.CoprocessorServiceCall;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.ClusterStatusProtos.RegionLoad;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.ClusterStatusProtos.StoreSequenceId;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.SnapshotProtos.SnapshotDescription;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos.CompactionDescriptor;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos.FlushDescriptor;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos.FlushDescriptor.FlushAction;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos.FlushDescriptor.StoreFlushDescriptor;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos.RegionEventDescriptor;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos.RegionEventDescriptor.EventType;
-import org.apache.hadoop.hbase.shaded.protobuf.generated.WALProtos.StoreDescriptor;
 import org.apache.hadoop.hbase.snapshot.SnapshotDescriptionUtils;
 import org.apache.hadoop.hbase.snapshot.SnapshotManifest;
 import org.apache.hadoop.hbase.trace.TraceUtil;
@@ -212,11 +198,6 @@ import org.apache.hbase.thirdparty.com.google.protobuf.Service;
 import org.apache.hbase.thirdparty.com.google.protobuf.TextFormat;
 import org.apache.hbase.thirdparty.com.google.protobuf.UnsafeByteOperations;
 import org.apache.hbase.thirdparty.org.apache.commons.collections4.CollectionUtils;
-
-import org.apache.yetus.audience.InterfaceAudience;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import org.apache.hadoop.hbase.shaded.protobuf.ProtobufUtil;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ClientProtos;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.ClientProtos.CoprocessorServiceCall;
@@ -727,6 +708,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
   private final MetricsRegionWrapperImpl metricsRegionWrapper;
   private final Durability regionDurability;
   private final boolean regionStatsEnabled;
+  private final boolean hasPrefix;
   // Stores the replication scope of the various column families of the table
   // that has non-default scope
   private final NavigableMap<byte[], Integer> replicationScope = new TreeMap<>(
@@ -908,6 +890,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
           conf.getBoolean(HConstants.ENABLE_CLIENT_BACKPRESSURE,
               HConstants.DEFAULT_ENABLE_CLIENT_BACKPRESSURE);
 
+    this.hasPrefix = conf.get(KeyPrefixRegionSplitRestriction.PREFIX_LENGTH_KEY) != null;
     this.maxCellSize = conf.getLong(HBASE_MAX_CELL_SIZE_KEY, DEFAULT_MAX_CELL_SIZE);
     this.miniBatchSize = conf.getInt(HBASE_REGIONSERVER_MINIBATCH_SIZE,
         DEFAULT_HBASE_REGIONSERVER_MINIBATCH_SIZE);
@@ -5067,6 +5050,26 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
   }
 
   /**
+   *
+   * @param splitRow
+   * @param regionStartKey
+   * @return Whether the split row is valid relative to the region's start key
+   */
+  private static boolean isValidSplit(byte[] splitRow, byte[] regionStartKey) {
+    if (regionStartKey.length != 0) {
+      return !Bytes.equals(regionStartKey, splitRow);
+    }
+
+    // Avoid creating an empty with split keys [] - \x00
+    for (byte b : splitRow) {
+      if (b != 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
    * Possibly rewrite incoming cell tags.
    */
   void rewriteCellTags(Map<byte[], List<Cell>> familyMap, final Mutation m) {
@@ -8878,6 +8881,10 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
     }
 
     if (ret != null) {
+      if (hasPrefix && !isValidSplit(ret, getRegionInfo().getStartKey())) {
+        return Optional.empty(); 
+      }
+
       try {
         checkRow(ret, "calculated split");
       } catch (IOException e) {
