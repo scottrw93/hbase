@@ -5079,7 +5079,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
       return !Bytes.equals(regionStartKey, splitRow);
     }
 
-    // Avoid creating an empty region with split keys [] - \x00
+    // Avoid creating an empty region with keys [] - \x00
     for (byte b: splitRow) {
       if (b != 0) {
         return true;
