@@ -727,7 +727,6 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
   private final MetricsRegionWrapperImpl metricsRegionWrapper;
   private final Durability regionDurability;
   private final boolean regionStatsEnabled;
-  private final boolean hasPrefix;
   // Stores the replication scope of the various column families of the table
   // that has non-default scope
   private final NavigableMap<byte[], Integer> replicationScope = new TreeMap<>(
@@ -909,7 +908,6 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
           conf.getBoolean(HConstants.ENABLE_CLIENT_BACKPRESSURE,
               HConstants.DEFAULT_ENABLE_CLIENT_BACKPRESSURE);
 
-    this.hasPrefix = conf.get(KeyPrefixRegionSplitRestriction.PREFIX_LENGTH_KEY) != null;
     this.maxCellSize = conf.getLong(HBASE_MAX_CELL_SIZE_KEY, DEFAULT_MAX_CELL_SIZE);
     this.miniBatchSize = conf.getInt(HBASE_REGIONSERVER_MINIBATCH_SIZE,
         DEFAULT_HBASE_REGIONSERVER_MINIBATCH_SIZE);
@@ -8900,7 +8898,7 @@ public class HRegion implements HeapSize, PropagatingConfigurationObserver, Regi
     }
 
     if (ret != null) {
-      if (hasPrefix && !isValidSplit(ret, getRegionInfo().getStartKey())) {
+      if (!isValidSplit(ret, getRegionInfo().getStartKey())) {
         return Optional.empty(); 
       }
 

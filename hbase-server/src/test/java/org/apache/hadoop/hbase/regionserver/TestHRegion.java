@@ -8005,4 +8005,35 @@ public class TestHRegion {
 
     region.close();
   }
+
+  @Test
+  public void testAllowsValidSplit() throws IOException {
+    byte[][] families = {COLUMN_FAMILY_BYTES};
+
+    Configuration conf = new Configuration(CONF);
+    conf.set(KeyPrefixRegionSplitRestriction.PREFIX_LENGTH_KEY, "1");
+    conf.set(RegionSplitRestriction.RESTRICTION_TYPE_KEY,
+      RegionSplitRestriction.RESTRICTION_TYPE_KEY_PREFIX);
+
+    region = initHRegion(tableName, method, conf, families);
+    region.setTableDescriptor(TableDescriptorBuilder
+      .newBuilder(region.getTableDescriptor())
+      .setMaxFileSize(1) // always attempt to split to trigger relevant code path
+      .build());
+    // Re-create the split policy with new table descriptor
+    region.initialize();
+
+    for (byte[] row: HBaseTestingUtility.ROWS) {
+      Put put = new Put(row);
+      put.addColumn(COLUMN_FAMILY_BYTES, null, row);
+      region.put(put);
+    }
+
+    region.flush(true);
+
+    Optional<byte[]> split = region.checkSplit();
+    assertTrue("Expected region to be splittable", split.isPresent());
+
+    region.flush(true);
+  }
 }
