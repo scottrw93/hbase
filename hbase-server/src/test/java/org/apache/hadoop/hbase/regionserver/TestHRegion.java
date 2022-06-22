@@ -7939,7 +7939,7 @@ public class TestHRegion {
   }
 
   @Test
-  public void testPreventsEmptySplits() throws Exception {
+  public void testPreventsEmptyRegions() throws Exception {
     byte[][] families = {COLUMN_FAMILY_BYTES};
 
     Configuration conf = new Configuration(CONF);
