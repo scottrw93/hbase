@@ -7939,7 +7939,7 @@ public class TestHRegion {
   }
 
   @Test
-  public void testPreventsIllegalSplits() throws Exception {
+  public void testPreventsEmptySplits() throws Exception {
     byte[][] families = {COLUMN_FAMILY_BYTES};
 
     Configuration conf = new Configuration(CONF);
@@ -7947,7 +7947,7 @@ public class TestHRegion {
     conf.set(RegionSplitRestriction.RESTRICTION_TYPE_KEY,
       RegionSplitRestriction.RESTRICTION_TYPE_KEY_PREFIX);
 
-    region = initHRegion(tableName, null, new byte[] {'1'}, method, conf, false,
+    region = initHRegion(tableName, null, new byte[] {0x01}, method, conf, false,
       families);
     region.setTableDescriptor(TableDescriptorBuilder
       .newBuilder(region.getTableDescriptor())
@@ -7959,6 +7959,40 @@ public class TestHRegion {
     for (byte[] row: HBaseTestingUtility.ROWS) {
       byte[] rowCp = Bytes.copy(row);
       rowCp[0] = 0x00;
+      Put put = new Put(rowCp);
+      put.addColumn(COLUMN_FAMILY_BYTES, null, rowCp);
+      region.put(put);
+    }
+
+    region.flush(true);
+
+    Optional<byte[]> split = region.checkSplit();
+    assertTrue("Expected region to be unsplittable", split.isEmpty());
+
+    region.close();
+  }
+
+  @Test
+  public void testPreventSameStartKeyAndSplitKey() throws IOException {
+    byte[][] families = {COLUMN_FAMILY_BYTES};
+
+    Configuration conf = new Configuration(CONF);
+    conf.set(KeyPrefixRegionSplitRestriction.PREFIX_LENGTH_KEY, "1");
+    conf.set(RegionSplitRestriction.RESTRICTION_TYPE_KEY,
+      RegionSplitRestriction.RESTRICTION_TYPE_KEY_PREFIX);
+
+    region = initHRegion(tableName, new byte[] {0x01}, new byte[] {0x02}, method, conf, false,
+      families);
+    region.setTableDescriptor(TableDescriptorBuilder
+      .newBuilder(region.getTableDescriptor())
+      .setMaxFileSize(1) // always attempt to split to trigger relevant code path
+      .build());
+    // Re-create the split policy with new table descriptor
+    region.initialize();
+
+    for (byte[] row: HBaseTestingUtility.ROWS) {
+      byte[] rowCp = Bytes.copy(row);
+      rowCp[0] = 0x01;
       Put put = new Put(rowCp);
       put.addColumn(COLUMN_FAMILY_BYTES, null, rowCp);
       region.put(put);
