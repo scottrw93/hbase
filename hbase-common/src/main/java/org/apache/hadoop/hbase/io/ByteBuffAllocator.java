@@ -391,7 +391,7 @@ public class ByteBuffAllocator {
       poolAllocationBytes.add(bufSize);
       poolBuffersAllocated.increment();
       if (LOG.isTraceEnabled()) {
-        LOG.trace("Pulled buf of size {} from pool, total allocated: {}, total returned: {}, currently in pool: {}", bb.capacity(), poolBuffersAllocated, poolBuffersReturned, buffers.size());
+        LOG.trace("Pulled buf of size {} from pool, total allocated: {}, total returned: {}, currently in pool: {}", bb.capacity(), poolBuffersAllocated, poolBuffersReturned, buffers.size(), new RuntimeException());
       } else if (LOG.isDebugEnabled()) {
         LOG.debug("Pulled buf of size {} from pool, total allocated: {}, total returned: {}", bb.capacity(), poolBuffersAllocated, poolBuffersReturned);
       }
@@ -415,7 +415,7 @@ public class ByteBuffAllocator {
       poolBuffersAllocated.increment();
       ByteBuffer buf = ByteBuffer.allocateDirect(bufSize);
       if (LOG.isTraceEnabled()) {
-        LOG.trace("Allocated new buf of size {} for pool, total allocated: {}, total returned: {}, currently in pool: {}", buf.capacity(), poolBuffersAllocated, poolBuffersReturned, buffers.size());
+        LOG.trace("Allocated new buf of size {} for pool, total allocated: {}, total returned: {}, currently in pool: {}", buf.capacity(), poolBuffersAllocated, poolBuffersReturned, buffers.size(), new RuntimeException());
       } else if (LOG.isDebugEnabled()) {
         LOG.debug("Allocated new buf of size {} for pool, total allocated: {}, total returned: {}", buf.capacity(), poolBuffersAllocated, poolBuffersReturned);
       }
@@ -434,7 +434,7 @@ public class ByteBuffAllocator {
     }
     poolBuffersReturned.increment();
     if (LOG.isTraceEnabled()) {
-      LOG.trace("Returned buf of size {} to pool, total allocated: {}, total returned: {}, currently in pool: {}", buf.capacity(), poolBuffersAllocated, poolBuffersReturned, buffers.size());
+      LOG.trace("Returned buf of size {} to pool, total allocated: {}, total returned: {}, currently in pool: {}", buf.capacity(), poolBuffersAllocated, poolBuffersReturned, buffers.size(), new RuntimeException());
     } else if (LOG.isDebugEnabled()) {
       LOG.debug("Returned buf of size {} to pool, total allocated: {}, total returned: {}", buf.capacity(), poolBuffersAllocated, poolBuffersReturned);
     }
