@@ -147,6 +147,8 @@ public class ByteBuffAllocator {
   protected final int bufSize;
   private final int maxBufCount;
   private final AtomicInteger usedBufCount = new AtomicInteger(0);
+  private final LongAdder poolBuffersAllocated = new LongAdder();
+  private final LongAdder poolBuffersReturned = new LongAdder();
 
   private boolean maxPoolSizeInfoLevelLogged = false;
 
@@ -387,6 +389,12 @@ public class ByteBuffAllocator {
       // To reset the limit to capacity and position to 0, must clear here.
       bb.clear();
       poolAllocationBytes.add(bufSize);
+      poolBuffersAllocated.increment();
+      if (LOG.isTraceEnabled()) {
+        LOG.trace("Pulled buf of size {} from pool, total allocated: {}, total returned: {}, currently in pool: {}", bb.capacity(), poolBuffersAllocated, poolBuffersReturned, buffers.size());
+      } else if (LOG.isDebugEnabled()) {
+        LOG.debug("Pulled buf of size {} from pool, total allocated: {}, total returned: {}", bb.capacity(), poolBuffersAllocated, poolBuffersReturned);
+      }
       return bb;
     }
     while (true) {
@@ -404,7 +412,14 @@ public class ByteBuffAllocator {
         continue;
       }
       poolAllocationBytes.add(bufSize);
-      return ByteBuffer.allocateDirect(bufSize);
+      poolBuffersAllocated.increment();
+      ByteBuffer buf = ByteBuffer.allocateDirect(bufSize);
+      if (LOG.isTraceEnabled()) {
+        LOG.trace("Allocated new buf of size {} for pool, total allocated: {}, total returned: {}, currently in pool: {}", buf.capacity(), poolBuffersAllocated, poolBuffersReturned, buffers.size());
+      } else if (LOG.isDebugEnabled()) {
+        LOG.debug("Allocated new buf of size {} for pool, total allocated: {}, total returned: {}", buf.capacity(), poolBuffersAllocated, poolBuffersReturned);
+      }
+      return buf;
     }
   }
 
@@ -416,6 +431,12 @@ public class ByteBuffAllocator {
     if (buf.capacity() != bufSize || (reservoirEnabled ^ buf.isDirect())) {
       LOG.warn("Trying to put a buffer, not created by this pool! Will be just ignored");
       return;
+    }
+    poolBuffersReturned.increment();
+    if (LOG.isTraceEnabled()) {
+      LOG.trace("Returned buf of size {} to pool, total allocated: {}, total returned: {}, currently in pool: {}", buf.capacity(), poolBuffersAllocated, poolBuffersReturned, buffers.size());
+    } else if (LOG.isDebugEnabled()) {
+      LOG.debug("Returned buf of size {} to pool, total allocated: {}, total returned: {}", buf.capacity(), poolBuffersAllocated, poolBuffersReturned);
     }
     buffers.offer(buf);
   }
