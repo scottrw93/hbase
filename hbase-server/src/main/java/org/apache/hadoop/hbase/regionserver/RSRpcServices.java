@@ -331,6 +331,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
 
   // The reference to the priority extraction function
   private final PriorityFunction priority;
+  private final boolean requireCellBock;
 
   private ScannerIdGenerator scannerIdGenerator;
   private final ConcurrentMap<String, RegionScannerHolder> scanners = new ConcurrentHashMap<>();
@@ -565,8 +566,16 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
     }
   }
 
-  private boolean isClientCellBlockSupport(RpcCallContext context) {
-    return context != null && context.isClientCellBlockSupported();
+  private boolean isClientCellBlockSupport(RpcCallContext context) throws IOException {
+    if (context != null && context.isClientCellBlockSupported()) {
+      LOG.debug("No cell block detected for caller {}", RpcServer.getRequestUserName());
+      return true;
+    } else if (requireCellBock) {
+      LOG.warn("No cell block detected, throwing exception for caller {}", RpcServer.getRequestUserName());
+      throw new DoNotRetryIOException("Server requires cell block encoding");
+    } else {
+      return false;
+    }
   }
 
   private void addResult(final MutateResponse.Builder builder, final Result result,
@@ -1203,6 +1212,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
   public RSRpcServices(final HRegionServer rs) throws IOException {
     final Configuration conf = rs.getConfiguration();
     regionServer = rs;
+    requireCellBock = conf.getBoolean("hbase.require.cellblock.encoding", true);
     rowSizeWarnThreshold = conf.getInt(
       HConstants.BATCH_ROWS_THRESHOLD_NAME, HConstants.BATCH_ROWS_THRESHOLD_DEFAULT);
     rejectRowsWithSizeOverThreshold =
