@@ -19,6 +19,9 @@ package org.apache.hadoop.hbase.nio;
 
 import org.apache.hadoop.hbase.io.ByteBuffAllocator;
 import org.apache.hadoop.hbase.io.ByteBuffAllocator.Recycler;
+import org.apache.hbase.thirdparty.io.netty.util.ResourceLeakDetector;
+import org.apache.hbase.thirdparty.io.netty.util.ResourceLeakDetectorFactory;
+import org.apache.hbase.thirdparty.io.netty.util.ResourceLeakTracker;
 import org.apache.yetus.audience.InterfaceAudience;
 
 import org.apache.hbase.thirdparty.io.netty.util.AbstractReferenceCounted;
@@ -31,6 +34,9 @@ import org.apache.hbase.thirdparty.io.netty.util.ReferenceCounted;
 @InterfaceAudience.Private
 public class RefCnt extends AbstractReferenceCounted {
 
+  private static final ResourceLeakDetector<RefCnt> detector = ResourceLeakDetectorFactory.instance()
+    .newResourceLeakDetector(RefCnt.class);
+  private final ResourceLeakTracker<RefCnt> leak;
   private Recycler recycler = ByteBuffAllocator.NONE;
 
   /**
@@ -49,11 +55,23 @@ public class RefCnt extends AbstractReferenceCounted {
 
   public RefCnt(Recycler recycler) {
     this.recycler = recycler;
+    this.leak = detector.track(this);
+  }
+
+  @Override public ReferenceCounted retain() {
+    leak.record();
+    return super.retain();
+  }
+
+  @Override public ReferenceCounted retain(int increment) {
+    leak.record();
+    return super.retain(increment);
   }
 
   @Override
   protected final void deallocate() {
     this.recycler.free();
+    this.leak.close(this);
   }
 
   @Override
