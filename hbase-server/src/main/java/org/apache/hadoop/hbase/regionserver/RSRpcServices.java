@@ -2611,6 +2611,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
         ClientProtos.Result pbr;
         if (isClientCellBlockSupport(context) && controller instanceof HBaseRpcController
             && VersionInfoUtil.hasMinimumVersion(context.getClientVersionInfo(), 1, 3)) {
+          LOG.debug("Had cell block but old version {} for caller {}", context.getClientVersionInfo(), RpcServer.getRequestUserName());
           pbr = ProtobufUtil.toResultNoData(r);
           ((HBaseRpcController) controller).setCellScanner(CellUtil.createCellScanner(r
               .rawCells()));
