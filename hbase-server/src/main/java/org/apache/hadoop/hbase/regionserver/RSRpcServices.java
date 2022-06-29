@@ -568,12 +568,12 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
 
   private boolean isClientCellBlockSupport(RpcCallContext context) throws IOException {
     if (context != null && context.isClientCellBlockSupported()) {
-      LOG.debug("No cell block detected for caller {}", RpcServer.getRequestUserName());
       return true;
     } else if (requireCellBock) {
       LOG.warn("No cell block detected, throwing exception for caller {}", RpcServer.getRequestUserName());
       throw new DoNotRetryIOException("Server requires cell block encoding");
     } else {
+      LOG.debug("No cell block detected for caller {}", RpcServer.getRequestUserName());
       return false;
     }
   }
