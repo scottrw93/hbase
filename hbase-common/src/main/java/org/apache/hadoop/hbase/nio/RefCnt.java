@@ -55,23 +55,29 @@ public class RefCnt extends AbstractReferenceCounted {
 
   public RefCnt(Recycler recycler) {
     this.recycler = recycler;
-    this.leak = detector.track(this);
+    this.leak = recycler == ByteBuffAllocator.NONE ? null : detector.track(this);
   }
 
   @Override public ReferenceCounted retain() {
-    leak.record();
+    if (leak != null) {
+      leak.record();
+    }
     return super.retain();
   }
 
   @Override public ReferenceCounted retain(int increment) {
-    leak.record();
+    if (leak != null) {
+      leak.record();
+    }
     return super.retain(increment);
   }
 
   @Override
   protected final void deallocate() {
     this.recycler.free();
-    this.leak.close(this);
+    if (leak != null) {
+      this.leak.close(this);
+    }
   }
 
   @Override
