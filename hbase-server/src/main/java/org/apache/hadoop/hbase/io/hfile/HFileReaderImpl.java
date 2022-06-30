@@ -353,6 +353,9 @@ public abstract class HFileReaderImpl implements HFile.Reader, Configurable {
 
     void updateCurrBlockRef(HFileBlock block) {
       if (block != null && curBlock != null && block.getOffset() == curBlock.getOffset()) {
+        if (block != curBlock) {
+          LOG.warn("Maybe leak -- blocks have same offset, but are different objects: block={}, curBlock={}", block, curBlock);
+        }
         return;
       }
       if (this.curBlock != null && this.curBlock.isSharedMem()) {
