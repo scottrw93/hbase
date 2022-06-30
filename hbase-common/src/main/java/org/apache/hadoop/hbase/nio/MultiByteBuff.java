@@ -1160,4 +1160,10 @@ public class MultiByteBuff extends ByteBuff {
     refCnt.retain();
     return this;
   }
+
+  @Override
+  public MultiByteBuff touch(Object hint) {
+    refCnt.touch(hint);
+    return this;
+  }
 }

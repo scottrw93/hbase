@@ -82,6 +82,9 @@ public class RefCnt extends AbstractReferenceCounted {
 
   @Override
   public final ReferenceCounted touch(Object hint) {
-    throw new UnsupportedOperationException();
+    if (leak != null) {
+      leak.record(hint);
+    }
+    return this;
   }
 }

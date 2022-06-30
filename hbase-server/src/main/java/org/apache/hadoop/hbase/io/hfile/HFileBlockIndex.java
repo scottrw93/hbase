@@ -314,7 +314,7 @@ public class HFileBlockIndex {
             // This is crucial for compaction-type workload which might have
             // caching turned off. This is like a one-block cache inside the
             // scanner.
-            block = currentBlock;
+            block = currentBlock.touch("loadDataBlockWithScanInfo from currentBlock");
           } else {
             // Call HFile's caching block reader API. We always cache index
             // blocks, otherwise we might get terrible performance.
@@ -329,7 +329,8 @@ public class HFileBlockIndex {
               expectedBlockType = BlockType.DATA;
             }
             block = cachingBlockReader.readBlock(currentOffset, currentOnDiskSize, shouldCache,
-              pread, isCompaction, true, expectedBlockType, expectedDataBlockEncoding);
+              pread, isCompaction, true, expectedBlockType, expectedDataBlockEncoding)
+              .touch("loadDataBlockWithScanInfo from readBlock");
           }
 
           if (block == null) {

@@ -767,10 +767,10 @@ public abstract class HFileReaderImpl implements HFile.Reader, Configurable {
         if (block != null && !block.getBlockType().isData()) {
           // Whatever block we read we will be returning it unless
           // it is a datablock. Just in case the blocks are non data blocks
-          block.release();
+          block.touch("release non-data block").release();
         }
       } while (!block.getBlockType().isData());
-      return block;
+      return block.touch("readNextDataBlock");
     }
 
     public DataBlockEncoding getEffectiveDataBlockEncoding() {
@@ -971,15 +971,19 @@ public abstract class HFileReaderImpl implements HFile.Reader, Configurable {
       HFileBlock newBlock = reader.readBlock(firstDataBlockOffset, -1, cacheBlocks, pread,
         isCompaction, true, BlockType.DATA, getEffectiveDataBlockEncoding());
       if (newBlock.getOffset() < 0) {
-        releaseIfNotCurBlock(newBlock);
+        releaseIfNotCurBlock(newBlock.touch("readAndUpdateNewBlock->releaseIfNotCurBlock"));
         throw new IOException("Invalid offset=" + newBlock.getOffset() +
           ", path=" + reader.getPath());
       }
-      updateCurrentBlock(newBlock);
+      updateCurrentBlock(newBlock.touch("readAndUpdateNewBlock->updateCurrentBlock"));
     }
 
     protected int loadBlockAndSeekToKey(HFileBlock seekToBlock, Cell nextIndexedKey, boolean rewind,
         Cell key, boolean seekBefore) throws IOException {
+      if (curBlock != null) {
+        curBlock.touch("loadBlockAndSeekToKey");
+      }
+      seekToBlock.touch("loadBlockAndSeekToKey");
       if (this.curBlock == null || this.curBlock.getOffset() != seekToBlock.getOffset()) {
         updateCurrentBlock(seekToBlock);
       } else if (rewind) {
@@ -1347,10 +1351,11 @@ public abstract class HFileReaderImpl implements HFile.Reader, Configurable {
         cacheConf.getBlockCache().ifPresent(cache -> {
           if (cacheBlock && cacheConf.shouldCacheBlockOnRead(category)) {
             cache.cacheBlock(cacheKey,
-              cacheConf.shouldCacheCompressed(category) ? hfileBlock : unpacked,
+              cacheConf.shouldCacheCompressed(category) ? hfileBlock.touch("in cacheBlock") : unpacked.touch("upacked in cacheBlock"),
               cacheConf.isInMemory());
           }
         });
+        hfileBlock.touch("after decompress");
         if (unpacked != hfileBlock) {
           // End of life here if hfileBlock is an independent block.
           hfileBlock.release();
@@ -1359,7 +1364,7 @@ public abstract class HFileReaderImpl implements HFile.Reader, Configurable {
           HFile.DATABLOCK_READ_COUNT.increment();
         }
 
-        return unpacked;
+        return unpacked.touch("unpacked after decompress");
       }
     } finally {
       if (lockEntry != null) {
@@ -1515,10 +1520,11 @@ public abstract class HFileReaderImpl implements HFile.Reader, Configurable {
         HFileBlock newBlock = readNextDataBlock();
         isValid = newBlock != null;
         if (isValid) {
-          updateCurrentBlock(newBlock);
+          updateCurrentBlock(newBlock.touch("pass to updateCurrentBlock"));
         } else {
           setNonSeekedState();
         }
+        newBlock.touch("after setNonSeekedState");
       }
       return isValid;
     }

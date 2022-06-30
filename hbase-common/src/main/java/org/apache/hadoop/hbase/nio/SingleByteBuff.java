@@ -417,4 +417,10 @@ public class SingleByteBuff extends ByteBuff {
     refCnt.retain();
     return this;
   }
+
+  @Override
+  public SingleByteBuff touch(Object hint) {
+    refCnt.touch(hint);
+    return this;
+  }
 }

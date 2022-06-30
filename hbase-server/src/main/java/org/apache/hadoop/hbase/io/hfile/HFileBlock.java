@@ -46,6 +46,7 @@ import org.apache.hadoop.hbase.io.encoding.HFileBlockDefaultEncodingContext;
 import org.apache.hadoop.hbase.io.encoding.HFileBlockEncodingContext;
 import org.apache.hadoop.hbase.io.util.BlockIOUtils;
 import org.apache.hadoop.hbase.nio.ByteBuff;
+import org.apache.hadoop.hbase.nio.HBaseReferenceCounted;
 import org.apache.hadoop.hbase.nio.MultiByteBuff;
 import org.apache.hadoop.hbase.nio.SingleByteBuff;
 import org.apache.hadoop.hbase.regionserver.ShipperListener;
@@ -417,6 +418,12 @@ public class HFileBlock implements Cacheable {
   @Override
   public HFileBlock retain() {
     buf.retain();
+    return this;
+  }
+
+  @Override
+  public HFileBlock touch(Object hint) {
+    buf.touch(hint);
     return this;
   }
 
