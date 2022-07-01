@@ -168,4 +168,8 @@ public interface HFileScanner extends Shipper, Closeable {
    */
   @Override
   void close();
+
+  default void touchBlocks(String hint) {
+
+  }
 }

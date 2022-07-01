@@ -181,4 +181,8 @@ public interface KeyValueScanner extends Shipper, Closeable {
    * see HFileWriterImpl#getMidpoint, or null if not known.
    */
   public Cell getNextIndexedKey();
+
+  default KeyValueScanner touchBlocks(String hint) {
+    return this;
+  }
 }

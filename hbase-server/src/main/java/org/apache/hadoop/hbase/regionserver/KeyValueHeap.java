@@ -122,19 +122,35 @@ public class KeyValueHeap extends NonReversedNonLazyKeyValueScanner
     Cell kvReturn = this.current.next();
     Cell kvNext = this.current.peek();
     if (kvNext == null) {
+      current.touchBlocks("next - no kvNext");
       this.scannersForDelayedClose.add(this.current);
       this.current = null;
       this.current = pollRealKV();
     } else {
+      current.touchBlocks("next - with kvNext");
       KeyValueScanner topScanner = this.heap.peek();
       // no need to add current back to the heap if it is the only scanner left
       if (topScanner != null && this.comparator.compare(kvNext, topScanner.peek()) >= 0) {
+        current.touchBlocks("next - reset current");
         this.heap.add(this.current);
         this.current = null;
         this.current = pollRealKV();
       }
     }
     return kvReturn;
+  }
+
+  public KeyValueHeap touchBlocks(String hint) {
+    if (current != null) {
+      current.touchBlocks(hint);
+    }
+    for (KeyValueScanner keyValueScanner : scannersForDelayedClose) {
+      keyValueScanner.touchBlocks(hint);
+    }
+    for (KeyValueScanner keyValueScanner : heap) {
+      keyValueScanner.touchBlocks(hint);
+    }
+    return this;
   }
 
   /**
@@ -379,7 +395,7 @@ public class KeyValueHeap extends NonReversedNonLazyKeyValueScanner
           KeyValueScanner nextEarliestScanner = heap.peek();
           if (nextEarliestScanner == null) {
             // The heap is empty. Return the only possible scanner.
-            return kvScanner;
+            return kvScanner.touchBlocks("pollRealKV - no nextEarliest");
           }
 
           // Compare the current scanner to the next scanner. We try to avoid
@@ -387,26 +403,29 @@ public class KeyValueHeap extends NonReversedNonLazyKeyValueScanner
           Cell nextKV = nextEarliestScanner.peek();
           if (nextKV == null || comparator.compare(curKV, nextKV) < 0) {
             // We already have the scanner with the earliest KV, so return it.
-            return kvScanner;
+            return kvScanner.touchBlocks("pollRealKV - nextEarliest");
           }
 
           // Otherwise, put the scanner back into the heap and let it compete
           // against all other scanners (both those that have done a "real
           // seek" and a "lazy seek").
-          heap.add(kvScanner);
+          heap.add(kvScanner.touchBlocks("pollRealKV - add back to heap"));
         } else {
           // Close the scanner because we did a real seek and found out there
           // are no more KVs.
-          this.scannersForDelayedClose.add(kvScanner);
+          this.scannersForDelayedClose.add(kvScanner.touchBlocks("pollRealKV - add to delay close"));
         }
       } else {
         // Close the scanner because it has already run out of KVs even before
         // we had to do a real seek on it.
-        this.scannersForDelayedClose.add(kvScanner);
+        this.scannersForDelayedClose.add(kvScanner.touchBlocks("pollRealKV - add to delay close"));
       }
       kvScanner = heap.poll();
     }
 
+    if (kvScanner != null) {
+      kvScanner.touchBlocks("pollRealKv - final return");
+    }
     return kvScanner;
   }
 

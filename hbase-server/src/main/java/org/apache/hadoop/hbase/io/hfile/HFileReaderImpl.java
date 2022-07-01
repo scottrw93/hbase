@@ -630,6 +630,14 @@ public abstract class HFileReaderImpl implements HFile.Reader, Configurable {
     }
 
     @Override
+    public void touchBlocks(String hint) {
+      if (curBlock != null) {
+        curBlock.touch(hint);
+      }
+      prevBlocks.forEach(block -> block.touch(hint));
+    }
+
+    @Override
     public int seekTo(Cell key) throws IOException {
       return seekTo(key, true);
     }
@@ -1358,7 +1366,7 @@ public abstract class HFileReaderImpl implements HFile.Reader, Configurable {
         hfileBlock.touch("after decompress");
         if (unpacked != hfileBlock) {
           // End of life here if hfileBlock is an independent block.
-          hfileBlock.release();
+          hfileBlock.touch("after decompress - release").release();
         }
         if (updateCacheMetrics && hfileBlock.getBlockType().isData()) {
           HFile.DATABLOCK_READ_COUNT.increment();
@@ -1488,11 +1496,11 @@ public abstract class HFileReaderImpl implements HFile.Reader, Configurable {
             " doesn't support data block encoding " +
             DataBlockEncoding.getNameFromId(dataBlockEncoderId) + ",path=" + reader.getPath());
         }
-        updateCurrBlockRef(newBlock);
-        ByteBuff encodedBuffer = getEncodedBuffer(newBlock);
+        updateCurrBlockRef(newBlock.touch("pass to updateCurrBlockRef"));
+        ByteBuff encodedBuffer = getEncodedBuffer(newBlock.touch("pass to getEncodedBuffer"));
         seeker.setCurrentBuffer(encodedBuffer);
       } finally {
-        releaseIfNotCurBlock(newBlock);
+        releaseIfNotCurBlock(newBlock.touch("pass to releaseIfNotCurBlock"));
       }
       // Reset the next indexed key
       this.nextIndexedKey = null;
@@ -1524,7 +1532,6 @@ public abstract class HFileReaderImpl implements HFile.Reader, Configurable {
         } else {
           setNonSeekedState();
         }
-        newBlock.touch("after setNonSeekedState");
       }
       return isValid;
     }
@@ -1546,6 +1553,7 @@ public abstract class HFileReaderImpl implements HFile.Reader, Configurable {
       if (this.curBlock == null) {
         return null;
       }
+      curBlock.touch("EncodedScanner.getCell");
       return seeker.getCell();
     }
 

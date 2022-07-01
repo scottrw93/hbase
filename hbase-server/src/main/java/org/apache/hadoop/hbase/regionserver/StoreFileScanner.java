@@ -207,6 +207,11 @@ public class StoreFileScanner implements KeyValueScanner {
     return retKey;
   }
 
+  @Override public StoreFileScanner touchBlocks(String hint) {
+    hfs.touchBlocks(hint);
+    return this;
+  }
+
   @Override
   public boolean seek(Cell key) throws IOException {
     if (seekCount != null) seekCount.increment();

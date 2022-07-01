@@ -563,6 +563,7 @@ public class StoreScanner extends NonReversedNonLazyKeyValueScanner
 
     Cell cell = this.heap.peek();
     if (cell == null) {
+      heap.touchBlocks("next - no cell, close without delayed");
       close(false);// Do all cleanup except heap.close()
       return scannerContext.setScannerState(NextState.NO_MORE_VALUES).hasMoreValues();
     }
@@ -664,6 +665,7 @@ public class StoreScanner extends NonReversedNonLazyKeyValueScanner
               if (storeLimit > -1 && this.countPerRow >= (storeLimit + storeOffset)) {
                 // do what SEEK_NEXT_ROW does.
                 if (!matcher.moreRowsMayExistAfter(cell)) {
+                  heap.touchBlocks("close - without delayed");
                   close(false);// Do all cleanup except heap.close()
                   return scannerContext.setScannerState(NextState.NO_MORE_VALUES).hasMoreValues();
                 }
@@ -675,6 +677,7 @@ public class StoreScanner extends NonReversedNonLazyKeyValueScanner
 
             if (qcode == ScanQueryMatcher.MatchCode.INCLUDE_AND_SEEK_NEXT_ROW) {
               if (!matcher.moreRowsMayExistAfter(cell)) {
+                heap.touchBlocks("close - without delayed");
                 close(false);// Do all cleanup except heap.close()
                 return scannerContext.setScannerState(NextState.NO_MORE_VALUES).hasMoreValues();
               }
@@ -697,6 +700,7 @@ public class StoreScanner extends NonReversedNonLazyKeyValueScanner
           case DONE:
             // Optimization for Gets! If DONE, no more to get on this row, early exit!
             if (get) {
+              heap.touchBlocks("close - without delayed");
               // Then no more to this row... exit.
               close(false);// Do all cleanup except heap.close()
               // update metric
@@ -713,6 +717,7 @@ public class StoreScanner extends NonReversedNonLazyKeyValueScanner
             // This is just a relatively simple end of scan fix, to short-cut end
             // us if there is an endKey in the scan.
             if (!matcher.moreRowsMayExistAfter(cell)) {
+              heap.touchBlocks("close - without delayed");
               close(false);// Do all cleanup except heap.close()
               return scannerContext.setScannerState(NextState.NO_MORE_VALUES).hasMoreValues();
             }
@@ -762,6 +767,7 @@ public class StoreScanner extends NonReversedNonLazyKeyValueScanner
         return scannerContext.setScannerState(NextState.MORE_VALUES).hasMoreValues();
       }
 
+      heap.touchBlocks("close - without delayed");
       // No more keys
       close(false);// Do all cleanup except heap.close()
       return scannerContext.setScannerState(NextState.NO_MORE_VALUES).hasMoreValues();
@@ -1090,9 +1096,9 @@ public class StoreScanner extends NonReversedNonLazyKeyValueScanner
       reopenAfterFlush();
     }
     if (explicitColumnQuery && lazySeekEnabledGlobally) {
-      return heap.requestSeek(kv, true, useRowColBloom);
+      return heap.touchBlocks("reseek - requestSeek").requestSeek(kv, true, useRowColBloom);
     }
-    return heap.reseek(kv);
+    return heap.touchBlocks("reseek").reseek(kv);
   }
 
   void trySwitchToStreamRead() {
