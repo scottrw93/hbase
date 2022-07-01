@@ -782,7 +782,9 @@ public class StoreScanner extends NonReversedNonLazyKeyValueScanner
       close(false);// Do all cleanup except heap.close()
       return scannerContext.setScannerState(NextState.NO_MORE_VALUES).hasMoreValues();
     } finally {
-      heap.touchBlocks("next - in finally, count = " + count);
+      if (heap != null) {
+        heap.touchBlocks("next - in finally, count = " + count);
+      }
       // increment only if we have some result
       if (count > 0 && matcher.isUserScan()) {
         // if true increment memstore metrics, if not the mixed one
