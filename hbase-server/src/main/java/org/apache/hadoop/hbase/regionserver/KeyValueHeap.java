@@ -117,6 +117,7 @@ public class KeyValueHeap extends NonReversedNonLazyKeyValueScanner
   @Override
   public Cell next()  throws IOException {
     if(this.current == null) {
+      touchBlocks("next - current is null");
       return null;
     }
     Cell kvReturn = this.current.next();

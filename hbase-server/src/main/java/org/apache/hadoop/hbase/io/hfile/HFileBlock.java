@@ -423,7 +423,7 @@ public class HFileBlock implements Cacheable {
 
   @Override
   public HFileBlock touch(Object hint) {
-    buf.touch(hint);
+    buf.touch(hint + ", type=" + getBlockType() + ", shared=" + isSharedMem());
     return this;
   }
 
