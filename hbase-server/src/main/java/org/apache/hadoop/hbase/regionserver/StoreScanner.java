@@ -710,6 +710,7 @@ public class StoreScanner extends NonReversedNonLazyKeyValueScanner
             return scannerContext.setScannerState(NextState.MORE_VALUES).hasMoreValues();
 
           case DONE_SCAN:
+            heap.touchBlocks("close - without delayed");
             close(false);// Do all cleanup except heap.close()
             return scannerContext.setScannerState(NextState.NO_MORE_VALUES).hasMoreValues();
 

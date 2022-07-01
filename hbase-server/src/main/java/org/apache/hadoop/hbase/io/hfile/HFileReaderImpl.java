@@ -1372,7 +1372,7 @@ public abstract class HFileReaderImpl implements HFile.Reader, Configurable {
         hfileBlock.touch("after decompress");
         if (unpacked != hfileBlock) {
           // End of life here if hfileBlock is an independent block.
-          hfileBlock.touch("after decompress - release").release();
+          hfileBlock.touch("after decompress - release " + hfileBlock.refCnt()).release();
         }
         if (updateCacheMetrics && hfileBlock.getBlockType().isData()) {
           HFile.DATABLOCK_READ_COUNT.increment();
