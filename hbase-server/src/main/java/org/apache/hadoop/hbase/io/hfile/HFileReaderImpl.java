@@ -358,7 +358,7 @@ public abstract class HFileReaderImpl implements HFile.Reader, Configurable {
         }
         return;
       }
-      if (this.curBlock != null && this.curBlock.isSharedMem()) {
+      if (this.curBlock != null) {
         prevBlocks.add(this.curBlock.touch("added to prevBlocks"));
       }
       if (block != null) {
@@ -369,10 +369,10 @@ public abstract class HFileReaderImpl implements HFile.Reader, Configurable {
 
     void reset() {
       // We don't have to keep ref to heap block
-      if (this.curBlock != null && this.curBlock.isSharedMem()) {
+      if (this.curBlock != null) {
         this.prevBlocks.add(this.curBlock.touch("reset - added to prevBlocks"));
-      } else if (this.curBlock != null) {
-        curBlock.touch("reset");
+//      } else if (this.curBlock != null) {
+//        curBlock.touch("reset");
       }
       this.curBlock = null;
     }
