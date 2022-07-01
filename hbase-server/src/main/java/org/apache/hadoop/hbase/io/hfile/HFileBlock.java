@@ -370,6 +370,9 @@ public class HFileBlock implements Cacheable {
     }
     fileContext = fileContextBuilder.build();
     assert usesHBaseChecksum == fileContext.isUseHBaseChecksum();
+    if (buf.hasArray() && buf.isDirect()) {
+      LOG.debug("Found a buffer where hasArray=true and isDirect=true: {}", buf);
+    }
     return new HFileBlockBuilder()
         .withBlockType(blockType)
         .withOnDiskSizeWithoutHeader(onDiskSizeWithoutHeader)
@@ -381,7 +384,7 @@ public class HFileBlock implements Cacheable {
         .withHFileContext(fileContext)
         .withByteBuffAllocator(allocator)
         .withByteBuff(buf.rewind())
-        .withShared(!buf.hasArray())
+        .withShared(!buf.hasArray() || buf.isDirect())
         .build();
   }
 
@@ -1770,6 +1773,9 @@ public class HFileBlock implements Cacheable {
         // contains the header of next block, so no need to set next block's header in it.
         HFileBlock hFileBlock = createFromBuff(curBlock, checksumSupport, offset,
           nextBlockOnDiskSize, fileContext, intoHeap ? HEAP : allocator);
+        if (!intoHeap && !hFileBlock.isSharedMem()) {
+          LOG.debug("Tried to allocate to shared mem, but got an HFileBlock: {}", hFileBlock);
+        }
         // Run check on uncompressed sizings.
         if (!fileContext.isCompressedOrEncrypted()) {
           hFileBlock.sanityCheckUncompressed();

@@ -143,6 +143,11 @@ public class MultiByteBuff extends ByteBuff {
     return false;
   }
 
+  @Override
+  public boolean isDirect() {
+    return true;
+  }
+
   /**
    * @return the total capacity of this MultiByteBuffer.
    */

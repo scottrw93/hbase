@@ -286,6 +286,8 @@ public abstract class ByteBuff implements HBaseReferenceCounted {
    */
   public abstract ByteBuff put(byte[] src);
 
+  public abstract boolean isDirect();
+
   /**
    * @return true or false if the underlying BB support hasArray
    */

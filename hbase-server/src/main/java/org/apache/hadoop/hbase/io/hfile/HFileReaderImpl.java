@@ -1373,6 +1373,9 @@ public abstract class HFileReaderImpl implements HFile.Reader, Configurable {
         if (unpacked != hfileBlock) {
           // End of life here if hfileBlock is an independent block.
           hfileBlock.touch("after decompress - release " + hfileBlock.refCnt()).release();
+          if (hfileBlock.isSharedMem() != unpacked.isSharedMem()) {
+            LOG.warn("Messed up isSharedMem somehow: orig={}, unpacked={}", hfileBlock, unpacked, new RuntimeException());
+          }
         }
         if (updateCacheMetrics && hfileBlock.getBlockType().isData()) {
           HFile.DATABLOCK_READ_COUNT.increment();

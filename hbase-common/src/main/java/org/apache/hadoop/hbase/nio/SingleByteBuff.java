@@ -266,6 +266,11 @@ public class SingleByteBuff extends ByteBuff {
     return this.buf.hasArray();
   }
 
+  public boolean isDirect() {
+    checkRefCount();
+    return this.buf.isDirect();
+  }
+
   @Override
   public byte[] array() {
     checkRefCount();
