@@ -427,7 +427,7 @@ public class HFileBlock implements Cacheable {
 
   @Override
   public HFileBlock touch(Object hint) {
-    buf.touch(hint + ", type=" + getBlockType() + ", shared=" + isSharedMem() + ", direct=" + buf.isDirect() + ", len=" + buf.capacity());
+    buf.touch(hint + ": " + getClass().getSimpleName() +  "{type=" + getBlockType() + ", shared=" + isSharedMem() + ", buf=" + buf + "}");
     return this;
   }
 
@@ -661,6 +661,10 @@ public class HFileBlock implements Cacheable {
       ctx.prepareDecoding(unpacked.getOnDiskSizeWithoutHeader(),
         unpacked.getUncompressedSizeWithoutHeader(), unpacked.getBufferWithoutHeader(true), dup);
       succ = true;
+
+      if (unpacked.isSharedMem() != isSharedMem() || unpacked.buf.isDirect() != buf.isDirect()) {
+        LOG.debug("Mismatch between original block and unpacked block: original={}, unpacked={}", this, unpacked);
+      }
       return unpacked;
     } finally {
       if (!succ) {
@@ -1774,8 +1778,8 @@ public class HFileBlock implements Cacheable {
         // contains the header of next block, so no need to set next block's header in it.
         HFileBlock hFileBlock = createFromBuff(curBlock, checksumSupport, offset,
           nextBlockOnDiskSize, fileContext, intoHeap ? HEAP : allocator);
-        if (!intoHeap && !hFileBlock.isSharedMem()) {
-          LOG.debug("Tried to allocate to shared mem, but got an HFileBlock: {}", hFileBlock);
+        if (hFileBlock.buf.isDirect() && !hFileBlock.isSharedMem()) {
+          LOG.debug("Created an HFileBlock with direct=true but shared=false: {}", hFileBlock);
         }
         // Run check on uncompressed sizings.
         if (!fileContext.isCompressedOrEncrypted()) {
