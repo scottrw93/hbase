@@ -493,6 +493,9 @@ public abstract class Compactor<T extends CellSink> {
       // don't clone here and once the scanner get closed, then the memory of last cell will be
       // released. (HBASE-22582)
       ((ShipperListener) writer).beforeShipped();
+      if (kvs != null) {
+        kvs.touchBlocks("performCompaction - finally");
+      }
       throughputController.finish(compactionName);
     }
     progress.complete();

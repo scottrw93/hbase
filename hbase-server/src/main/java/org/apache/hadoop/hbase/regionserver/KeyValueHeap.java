@@ -181,9 +181,9 @@ public class KeyValueHeap extends NonReversedNonLazyKeyValueScanner
 
     if (pee == null || !moreCells) {
       // add the scanner that is to be closed
-      this.scannersForDelayedClose.add(this.current);
+      this.scannersForDelayedClose.add(this.current.touchBlocks("next - add to delayedClose"));
     } else {
-      this.heap.add(this.current);
+      this.heap.add(this.current.touchBlocks("next - add to heap"));
     }
     this.current = null;
     this.current = pollRealKV();
@@ -324,7 +324,7 @@ public class KeyValueHeap extends NonReversedNonLazyKeyValueScanner
           // invariant that the top scanner has done a real seek. This way
           // StoreScanner and RegionScanner do not have to worry about fake
           // keys.
-          heap.add(scanner);
+          heap.add(scanner.touchBlocks("generalizedSeek - add back to heap"));
           scanner = null;
           current = pollRealKV();
           return current != null;
@@ -340,9 +340,9 @@ public class KeyValueHeap extends NonReversedNonLazyKeyValueScanner
         }
 
         if (!seekResult) {
-          this.scannersForDelayedClose.add(scanner);
+          this.scannersForDelayedClose.add(scanner.touchBlocks("generalizedSeek - delayed close"));
         } else {
-          heap.add(scanner);
+          heap.add(scanner.touchBlocks("generalizedSeek - add back to heap"));
         }
         scanner = heap.poll();
         if (scanner == null) {
@@ -387,7 +387,7 @@ public class KeyValueHeap extends NonReversedNonLazyKeyValueScanner
           kvScanner.enforceSeek();
         } catch (IOException ioe) {
           // Add the item to delayed close set in case it is leak from close
-          this.scannersForDelayedClose.add(kvScanner);
+          this.scannersForDelayedClose.add(kvScanner.touchBlocks("pollRealKV - add to delay close"));
           throw ioe;
         }
         Cell curKV = kvScanner.peek();
@@ -449,15 +449,15 @@ public class KeyValueHeap extends NonReversedNonLazyKeyValueScanner
   @Override
   public void shipped() throws IOException {
     for (KeyValueScanner scanner : this.scannersForDelayedClose) {
-      scanner.close(); // There wont be further fetch of Cells from these scanners. Just close.
+      scanner.touchBlocks("shipped - close delayed").close(); // There wont be further fetch of Cells from these scanners. Just close.
     }
     this.scannersForDelayedClose.clear();
     if (this.current != null) {
-      this.current.shipped();
+      this.current.touchBlocks("shipped - current shipped").shipped();
     }
     if (this.heap != null) {
       for (KeyValueScanner scanner : this.heap) {
-        scanner.shipped();
+        scanner.touchBlocks("shipped - heap shipped").shipped();
       }
     }
   }
