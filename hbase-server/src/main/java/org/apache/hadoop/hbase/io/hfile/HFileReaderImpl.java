@@ -359,7 +359,10 @@ public abstract class HFileReaderImpl implements HFile.Reader, Configurable {
         return;
       }
       if (this.curBlock != null && this.curBlock.isSharedMem()) {
-        prevBlocks.add(this.curBlock);
+        prevBlocks.add(this.curBlock.touch("added to prevBlocks"));
+      }
+      if (block != null) {
+        block.touch("set as curBlock");
       }
       this.curBlock = block;
     }
@@ -367,7 +370,9 @@ public abstract class HFileReaderImpl implements HFile.Reader, Configurable {
     void reset() {
       // We don't have to keep ref to heap block
       if (this.curBlock != null && this.curBlock.isSharedMem()) {
-        this.prevBlocks.add(this.curBlock);
+        this.prevBlocks.add(this.curBlock.touch("reset - added to prevBlocks"));
+      } else if (this.curBlock != null) {
+        curBlock.touch("reset");
       }
       this.curBlock = null;
     }
@@ -739,6 +744,7 @@ public abstract class HFileReaderImpl implements HFile.Reader, Configurable {
      * the block, which was read from HFile before and not referenced by curBlock.
      */
     protected void releaseIfNotCurBlock(HFileBlock block) {
+      block.touch("releaseIfNotCurBlock");
       if (curBlock != block) {
         block.release();
       }

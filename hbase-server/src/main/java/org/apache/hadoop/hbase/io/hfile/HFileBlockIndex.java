@@ -375,6 +375,8 @@ public class HFileBlockIndex {
           if (block != null && !block.getBlockType().isData()) {
             // Release the block immediately if it is not the data block
             block.release();
+          } else if (block != null) {
+            block.touch("loadDataBlockWithScanInfo final");
           }
         }
       }
