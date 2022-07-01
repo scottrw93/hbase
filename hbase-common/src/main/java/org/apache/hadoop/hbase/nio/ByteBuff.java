@@ -567,7 +567,7 @@ public abstract class ByteBuff implements HBaseReferenceCounted {
   @Override
   public String toString() {
     return this.getClass().getSimpleName() + "[pos=" + position() + ", lim=" + limit() +
-        ", cap= " + capacity() + "]";
+        ", cap= " + capacity() + ", hasArray=" + hasArray() + ", direct=" + isDirect() + "]";
   }
 
   /********************************* ByteBuff wrapper methods ***********************************/
