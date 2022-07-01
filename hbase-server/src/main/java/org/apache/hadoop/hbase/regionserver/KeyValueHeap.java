@@ -347,6 +347,8 @@ public class KeyValueHeap extends NonReversedNonLazyKeyValueScanner
         scanner = heap.poll();
         if (scanner == null) {
           current = null;
+        } else {
+          scanner.touchBlocks("generalizedSeek - poll at end");
         }
       }
     } catch (Exception e) {
