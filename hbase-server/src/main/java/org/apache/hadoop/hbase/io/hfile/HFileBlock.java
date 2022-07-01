@@ -420,13 +420,14 @@ public class HFileBlock implements Cacheable {
 
   @Override
   public HFileBlock retain() {
+    buf.touch("HFileBlock retain");
     buf.retain();
     return this;
   }
 
   @Override
   public HFileBlock touch(Object hint) {
-    buf.touch(hint + ", type=" + getBlockType() + ", shared=" + isSharedMem());
+    buf.touch(hint + ", type=" + getBlockType() + ", shared=" + isSharedMem() + ", direct=" + buf.isDirect() + ", len=" + buf.capacity());
     return this;
   }
 

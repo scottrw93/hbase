@@ -1212,7 +1212,7 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
   public RSRpcServices(final HRegionServer rs) throws IOException {
     final Configuration conf = rs.getConfiguration();
     regionServer = rs;
-    requireCellBock = conf.getBoolean("hbase.require.cellblock.encoding", true);
+    requireCellBock = conf.getBoolean("hbase.require.cellblock.encoding", false);
     rowSizeWarnThreshold = conf.getInt(
       HConstants.BATCH_ROWS_THRESHOLD_NAME, HConstants.BATCH_ROWS_THRESHOLD_DEFAULT);
     rejectRowsWithSizeOverThreshold =

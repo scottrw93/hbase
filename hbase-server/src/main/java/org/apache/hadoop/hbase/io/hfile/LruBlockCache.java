@@ -375,6 +375,7 @@ public class LruBlockCache implements FirstLevelBlockCache {
   private Cacheable asReferencedHeapBlock(Cacheable buf) {
     if (buf instanceof HFileBlock) {
       HFileBlock blk = ((HFileBlock) buf);
+      blk.touch("asReferencedHeapBlock");
       if (blk.isSharedMem()) {
         return HFileBlock.deepCloneOnHeap(blk);
       }
