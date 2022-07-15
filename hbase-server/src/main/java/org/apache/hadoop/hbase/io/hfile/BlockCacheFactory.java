@@ -128,7 +128,12 @@ public final class BlockCacheFactory {
         LOG.warn(
             "From HBase 2.0 onwards only combined mode of LRU cache and bucket cache is available");
       }
-      return bucketCache == null ? l1Cache : new CombinedBlockCache(l1Cache, bucketCache);
+      if (bucketCache == null) {
+        return l1Cache;
+      } else {
+        l1Cache.setVictimCache(bucketCache);
+        return new CombinedBlockCache(l1Cache, bucketCache);
+      }
     }
   }
 
