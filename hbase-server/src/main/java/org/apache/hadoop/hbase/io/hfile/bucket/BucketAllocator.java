@@ -250,12 +250,17 @@ public final class BucketAllocator {
 
     public synchronized IndexStatistics statistics() {
       long free = 0, used = 0;
+      int full = 0;
       for (Object obj : bucketList.keySet()) {
         Bucket b = (Bucket) obj;
         free += b.freeCount();
         used += b.usedCount();
+        if (!b.hasFreeSpace()) {
+          full++;
+        }
       }
-      return new IndexStatistics(free, used, bucketSizes[sizeIndex]);
+      return new IndexStatistics(free, used, bucketSizes[sizeIndex], full, freeBuckets.size(),
+        completelyFreeBuckets.size());
     }
 
     @Override
@@ -494,6 +499,7 @@ public final class BucketAllocator {
 
   static class IndexStatistics {
     private long freeCount, usedCount, itemSize, totalCount;
+    private int fullBuckets, freeBuckets, completelyFreeBuckets;
 
     public long freeCount() {
       return freeCount;
@@ -523,19 +529,36 @@ public final class BucketAllocator {
       return itemSize;
     }
 
-    public IndexStatistics(long free, long used, long itemSize) {
-      setTo(free, used, itemSize);
+    public int getFullBuckets() {
+      return fullBuckets;
+    }
+
+    public int getFreeBuckets() {
+      return freeBuckets;
+    }
+
+    public int getCompletelyFreeBuckets() {
+      return completelyFreeBuckets;
+    }
+
+    public IndexStatistics(long free, long used, long itemSize, int fullBuckets, int freeBuckets,
+      int completelyFreeBuckets) {
+      setTo(free, used, itemSize, fullBuckets, freeBuckets, completelyFreeBuckets);
     }
 
     public IndexStatistics() {
-      setTo(-1, -1, 0);
+      setTo(-1, -1, 0, 0, 0, 0);
     }
 
-    public void setTo(long free, long used, long itemSize) {
+    public void setTo(long free, long used, long itemSize, int fullBuckets, int freeBuckets,
+      int completelyFreeBuckets) {
       this.itemSize = itemSize;
       this.freeCount = free;
       this.usedCount = used;
       this.totalCount = free + used;
+      this.fullBuckets = fullBuckets;
+      this.freeBuckets = freeBuckets;
+      this.completelyFreeBuckets = completelyFreeBuckets;
     }
   }
 
@@ -543,26 +566,36 @@ public final class BucketAllocator {
     return this.buckets;
   }
 
-  void logStatistics() {
+  void logDebugStatistics() {
+    if (!LOG.isDebugEnabled()) {
+      return;
+    }
+
     IndexStatistics total = new IndexStatistics();
     IndexStatistics[] stats = getIndexStatistics(total);
-    LOG.info("Bucket allocator statistics follow:\n");
-    LOG.info("  Free bytes=" + total.freeBytes() + "+; used bytes="
-        + total.usedBytes() + "; total bytes=" + total.totalBytes());
+    LOG.debug("Bucket allocator statistics follow:\n");
+    LOG.debug("  Free bytes={}; used bytes={}; total bytes={}; completelyFreeBuckets={}",
+      total.freeBytes(), total.usedBytes(), total.totalBytes(), total.getCompletelyFreeBuckets());
     for (IndexStatistics s : stats) {
-      LOG.info("  Object size " + s.itemSize() + " used=" + s.usedCount()
-          + "; free=" + s.freeCount() + "; total=" + s.totalCount());
+      LOG.debug("  Object size {}; used={}; free={}; total={}; fullBuckets={}; freeBuckets={}",
+        s.itemSize(), s.usedCount(), s.freeCount(), s.totalCount(), s.getFullBuckets(),
+        s.getFreeBuckets());
     }
   }
 
   IndexStatistics[] getIndexStatistics(IndexStatistics grandTotal) {
     IndexStatistics[] stats = getIndexStatistics();
     long totalfree = 0, totalused = 0;
+    int fullBuckets = 0, freeBuckets = 0, completelyFreeBuckets = 0;
+
     for (IndexStatistics stat : stats) {
       totalfree += stat.freeBytes();
       totalused += stat.usedBytes();
+      fullBuckets += stat.getFullBuckets();
+      freeBuckets += stat.getFreeBuckets();
+      completelyFreeBuckets += stat.getCompletelyFreeBuckets();
     }
-    grandTotal.setTo(totalfree, totalused, 1);
+    grandTotal.setTo(totalfree, totalused, 1, fullBuckets, freeBuckets, completelyFreeBuckets);
     return stats;
   }
 
