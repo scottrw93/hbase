@@ -18,8 +18,18 @@
  */
 package org.apache.hadoop.hbase.io.hfile;
 
+import static com.codahale.metrics.MetricRegistry.name;
+
 import com.codahale.metrics.ConsoleReporter;
+import com.codahale.metrics.Counter;
+import com.codahale.metrics.Gauge;
+import com.codahale.metrics.Histogram;
+import com.codahale.metrics.Meter;
+import com.codahale.metrics.MetricFilter;
 import com.codahale.metrics.MetricRegistry;
+import com.codahale.metrics.ScheduledReporter;
+import com.codahale.metrics.Snapshot;
+import com.codahale.metrics.Timer;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInput;
 import java.io.IOException;
@@ -33,7 +43,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.SortedMap;
 import java.util.TimeZone;
+import java.util.concurrent.TimeUnit;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
@@ -52,7 +64,6 @@ import org.apache.hadoop.hbase.PrivateCellUtil;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.Tag;
 import org.apache.hadoop.hbase.io.FSDataInputStreamWrapper;
-import org.apache.hadoop.hbase.metrics.Snapshot;
 import org.apache.hadoop.hbase.mob.MobUtils;
 import org.apache.hadoop.hbase.regionserver.HStoreFile;
 import org.apache.hadoop.hbase.regionserver.TimeRangeTracker;
@@ -62,8 +73,6 @@ import org.apache.hadoop.hbase.util.BloomFilterUtil;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.CommonFSUtils;
 import org.apache.hadoop.hbase.util.HFileArchiveUtil;
-import org.apache.hadoop.metrics2.lib.MutableRangeHistogram;
-import org.apache.hadoop.metrics2.lib.MutableSizeHistogram;
 import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
 import org.apache.yetus.audience.InterfaceAudience;
@@ -589,17 +598,15 @@ public class HFilePrettyPrinter extends Configured implements Tool {
   private static class KeyValueStatsCollector {
     private final MetricRegistry metricsRegistry = new MetricRegistry();
     private final ByteArrayOutputStream metricsOutput = new ByteArrayOutputStream();
+    private final SimpleReporter simpleReporter = SimpleReporter.forRegistry(metricsRegistry).
+        outputTo(new PrintStream(metricsOutput)).filter(MetricFilter.ALL).build();
 
-    MutableSizeHistogram keyLen = new MutableSizeHistogram("Key length", "Size of cell keys");
-    MutableSizeHistogram valLen = new MutableSizeHistogram("Val length", "Size of cell values");
-    MutableSizeHistogram rowSizeBytes =
-      new MutableSizeHistogram("Row size (bytes)", "Size of rows in bytes");
-    MutableColumnCountHistogram rowSizeCols =
-      new MutableColumnCountHistogram("Row size (columns)", "Size of rows in columns");
-
-    private final SimpleReporter simpleReporter = SimpleReporter.newBuilder().addHistogram(keyLen)
-      .addHistogram(valLen).addHistogram(rowSizeBytes).addHistogram(rowSizeCols)
-      .outputTo(new PrintStream(metricsOutput)).build();
+    Histogram keyLen = metricsRegistry.histogram(name(HFilePrettyPrinter.class, "Key length"));
+    Histogram valLen = metricsRegistry.histogram(name(HFilePrettyPrinter.class, "Val length"));
+    Histogram rowSizeBytes = metricsRegistry.histogram(
+      name(HFilePrettyPrinter.class, "Row size (bytes)"));
+    Histogram rowSizeCols = metricsRegistry.histogram(
+      name(HFilePrettyPrinter.class, "Row size (columns)"));
 
     long curRowBytes = 0;
     long curRowCols = 0;
@@ -611,8 +618,9 @@ public class HFilePrettyPrinter extends Configured implements Tool {
     private long curRowKeyLength;
 
     public void collect(Cell cell) {
-      valLen.add(cell.getValueLength());
-      if (prevCell != null && CellComparator.getInstance().compareRows(prevCell, cell) != 0) {
+      valLen.update(cell.getValueLength());
+      if (prevCell != null &&
+          CellComparator.getInstance().compareRows(prevCell, cell) != 0) {
         // new row
         collectRow();
       }
@@ -623,9 +631,9 @@ public class HFilePrettyPrinter extends Configured implements Tool {
     }
 
     private void collectRow() {
-      rowSizeBytes.add(curRowBytes);
-      rowSizeCols.add(curRowCols);
-      keyLen.add(curRowKeyLength);
+      rowSizeBytes.update(curRowBytes);
+      rowSizeCols.update(curRowCols);
+      keyLen.update(curRowKeyLength);
 
       if (curRowBytes > maxRowBytes && prevCell != null) {
         biggestRow = CellUtil.cloneRow(prevCell);
@@ -648,6 +656,7 @@ public class HFilePrettyPrinter extends Configured implements Tool {
         return "no data available for statistics";
 
       // Dump the metrics to the output stream
+      simpleReporter.stop();
       simpleReporter.report();
 
       return
@@ -657,60 +666,42 @@ public class HFilePrettyPrinter extends Configured implements Tool {
   }
 
   /**
-   * MutableRangeHistogram with buckets designed for column counts
+   * Almost identical to ConsoleReporter, but extending ScheduledReporter,
+   * as extending ConsoleReporter in this version of dropwizard is now too much trouble.
    */
-  static class MutableColumnCountHistogram extends MutableRangeHistogram {
-
-    private final static long[] RANGES = { 1, 3, 5, 10, 50, 100, 500, 1000, 5000, 10000 };
-
-    public MutableColumnCountHistogram(String name, String description) {
-      super(name, description);
-    }
-
-    @Override
-    public String getRangeType() {
-      return "ColumnsRangeCount";
-    }
-
-    @Override
-    public long[] getRanges() {
-      return RANGES;
-    }
-  }
-
-  /**
-   * Simple reporter which collects registered histograms for printing to an output stream in
-   * {@link #report()}.
-   */
-  private static class SimpleReporter {
+  private static class SimpleReporter extends ScheduledReporter {
     /**
      * Returns a new {@link Builder} for {@link ConsoleReporter}.
+     *
+     * @param registry the registry to report
      * @return a {@link Builder} instance for a {@link ConsoleReporter}
      */
-    public static Builder newBuilder() {
-      return new Builder();
+    public static Builder forRegistry(MetricRegistry registry) {
+      return new Builder(registry);
     }
 
     /**
-     * A builder for {@link SimpleReporter} instances. Defaults to using the default locale and time
-     * zone, writing to {@code System.out}.
+     * A builder for {@link SimpleReporter} instances. Defaults to using the default locale and
+     * time zone, writing to {@code System.out}, converting rates to events/second, converting
+     * durations to milliseconds, and not filtering metrics.
      */
     public static class Builder {
-
-      private final List<MutableRangeHistogram> histograms = new ArrayList<>();
+      private final MetricRegistry registry;
       private PrintStream output;
-      private final Locale locale;
-      private final TimeZone timeZone;
+      private Locale locale;
+      private TimeZone timeZone;
+      private TimeUnit rateUnit;
+      private TimeUnit durationUnit;
+      private MetricFilter filter;
 
-      private Builder() {
+      private Builder(MetricRegistry registry) {
+        this.registry = registry;
         this.output = System.out;
         this.locale = Locale.getDefault();
         this.timeZone = TimeZone.getDefault();
-      }
-
-      public Builder addHistogram(MutableRangeHistogram histogram) {
-        histograms.add(histogram);
-        return this;
+        this.rateUnit = TimeUnit.SECONDS;
+        this.durationUnit = TimeUnit.MILLISECONDS;
+        this.filter = MetricFilter.ALL;
       }
 
       /**
@@ -725,23 +716,44 @@ public class HFilePrettyPrinter extends Configured implements Tool {
       }
 
       /**
+       * Only report metrics which match the given filter.
+       *
+       * @param filter a {@link MetricFilter}
+       * @return {@code this}
+       */
+      public Builder filter(MetricFilter filter) {
+        this.filter = filter;
+        return this;
+      }
+
+      /**
        * Builds a {@link ConsoleReporter} with the given properties.
        *
        * @return a {@link ConsoleReporter}
        */
       public SimpleReporter build() {
-        return new SimpleReporter(histograms, output, locale, timeZone);
+        return new SimpleReporter(registry,
+            output,
+            locale,
+            timeZone,
+            rateUnit,
+            durationUnit,
+            filter);
       }
     }
 
-    private final List<MutableRangeHistogram> histograms;
     private final PrintStream output;
     private final Locale locale;
     private final DateFormat dateFormat;
 
-    private SimpleReporter(List<MutableRangeHistogram> histograms, PrintStream output,
-      Locale locale, TimeZone timeZone) {
-      this.histograms = histograms;
+    private SimpleReporter(MetricRegistry registry,
+                            PrintStream output,
+                            Locale locale,
+                            TimeZone timeZone,
+                            TimeUnit rateUnit,
+                            TimeUnit durationUnit,
+                            MetricFilter filter) {
+      super(registry, "simple-reporter", filter, rateUnit, durationUnit);
       this.output = output;
       this.locale = locale;
 
@@ -751,13 +763,18 @@ public class HFilePrettyPrinter extends Configured implements Tool {
       dateFormat.setTimeZone(timeZone);
     }
 
-    public void report() {
+    @Override
+    public void report(SortedMap<String, Gauge> gauges,
+                       SortedMap<String, Counter> counters,
+                       SortedMap<String, Histogram> histograms,
+                       SortedMap<String, Meter> meters,
+                       SortedMap<String, Timer> timers) {
       // we know we only have histograms
       if (!histograms.isEmpty()) {
-        for (MutableRangeHistogram entry : histograms) {
-          output.print("   " + entry.getName());
+        for (Map.Entry<String, Histogram> entry : histograms.entrySet()) {
+          output.print("   " + StringUtils.substringAfterLast(entry.getKey(), "."));
           output.println(':');
-          printHistogram(entry);
+          printHistogram(entry.getValue());
         }
         output.println();
       }
@@ -766,24 +783,19 @@ public class HFilePrettyPrinter extends Configured implements Tool {
       output.flush();
     }
 
-    private void printHistogram(MutableRangeHistogram histogram) {
+    private void printHistogram(Histogram histogram) {
       Snapshot snapshot = histogram.getSnapshot();
       output.printf(locale, "               min = %d%n", snapshot.getMin());
       output.printf(locale, "               max = %d%n", snapshot.getMax());
-      output.printf(locale, "              mean = %d%n", snapshot.getMean());
-      output.printf(locale, "            median = %d%n", snapshot.getMedian());
-      output.printf(locale, "              75%% <= %d%n", snapshot.get75thPercentile());
-      output.printf(locale, "              95%% <= %d%n", snapshot.get95thPercentile());
-      output.printf(locale, "              98%% <= %d%n", snapshot.get98thPercentile());
-      output.printf(locale, "              99%% <= %d%n", snapshot.get99thPercentile());
-      output.printf(locale, "            99.9%% <= %d%n", snapshot.get999thPercentile());
+      output.printf(locale, "              mean = %2.2f%n", snapshot.getMean());
+      output.printf(locale, "            stddev = %2.2f%n", snapshot.getStdDev());
+      output.printf(locale, "            median = %2.2f%n", snapshot.getMedian());
+      output.printf(locale, "              75%% <= %2.2f%n", snapshot.get75thPercentile());
+      output.printf(locale, "              95%% <= %2.2f%n", snapshot.get95thPercentile());
+      output.printf(locale, "              98%% <= %2.2f%n", snapshot.get98thPercentile());
+      output.printf(locale, "              99%% <= %2.2f%n", snapshot.get99thPercentile());
+      output.printf(locale, "            99.9%% <= %2.2f%n", snapshot.get999thPercentile());
       output.printf(locale, "             count = %d%n", histogram.getCount());
-
-      for (long range : histogram.getRanges()) {
-        String countAtOrBelow = Long.toString(snapshot.getCountAtOrBelow(range));
-        countAtOrBelow = StringUtils.leftPad(countAtOrBelow, 17, " ");
-        output.printf(locale, "%s <= %d%n", countAtOrBelow, range);
-      }
     }
   }
 
