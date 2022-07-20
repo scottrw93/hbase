@@ -259,8 +259,15 @@ public final class BucketAllocator {
           full++;
         }
       }
-      return new IndexStatistics(free, used, bucketSizes[sizeIndex], full, freeBuckets.size(),
-        completelyFreeBuckets.size());
+      int bucketObjectSize = bucketSizes[sizeIndex];
+      // this is most likely to always be 1 or 0
+      int fillingBuckets = Math.max(0, freeBuckets.size() - completelyFreeBuckets.size());
+      // if bucket capacity is not perfectly divisible by a bucket's object size, there will
+      // be some left over per bucket. for some object sizes this may be large enough to be
+      // non-trivial and worth tuning by choosing a more divisible object size.
+      long waistedBytes = (bucketCapacity % bucketObjectSize) * (full + fillingBuckets);
+      return new IndexStatistics(free, used, bucketObjectSize, full,
+        completelyFreeBuckets.size(), waistedBytes);
     }
 
     @Override
@@ -498,8 +505,8 @@ public final class BucketAllocator {
   }
 
   static class IndexStatistics {
-    private long freeCount, usedCount, itemSize, totalCount;
-    private int fullBuckets, freeBuckets, completelyFreeBuckets;
+    private long freeCount, usedCount, itemSize, totalCount, waistedBytes;
+    private int fullBuckets, completelyFreeBuckets;
 
     public long freeCount() {
       return freeCount;
@@ -529,36 +536,36 @@ public final class BucketAllocator {
       return itemSize;
     }
 
-    public int getFullBuckets() {
+    public int fullBuckets() {
       return fullBuckets;
     }
 
-    public int getFreeBuckets() {
-      return freeBuckets;
-    }
-
-    public int getCompletelyFreeBuckets() {
+    public int completelyFreeBuckets() {
       return completelyFreeBuckets;
     }
 
-    public IndexStatistics(long free, long used, long itemSize, int fullBuckets, int freeBuckets,
-      int completelyFreeBuckets) {
-      setTo(free, used, itemSize, fullBuckets, freeBuckets, completelyFreeBuckets);
+    public long waistedBytes() {
+      return waistedBytes;
+    }
+
+    public IndexStatistics(long free, long used, long itemSize, int fullBuckets,
+      int completelyFreeBuckets, long waistedBytes) {
+      setTo(free, used, itemSize, fullBuckets, completelyFreeBuckets, waistedBytes);
     }
 
     public IndexStatistics() {
       setTo(-1, -1, 0, 0, 0, 0);
     }
 
-    public void setTo(long free, long used, long itemSize, int fullBuckets, int freeBuckets,
-      int completelyFreeBuckets) {
+    public void setTo(long free, long used, long itemSize, int fullBuckets,
+      int completelyFreeBuckets, long waistedBytes) {
       this.itemSize = itemSize;
       this.freeCount = free;
       this.usedCount = used;
       this.totalCount = free + used;
       this.fullBuckets = fullBuckets;
-      this.freeBuckets = freeBuckets;
       this.completelyFreeBuckets = completelyFreeBuckets;
+      this.waistedBytes = waistedBytes;
     }
   }
 
@@ -573,29 +580,28 @@ public final class BucketAllocator {
 
     IndexStatistics total = new IndexStatistics();
     IndexStatistics[] stats = getIndexStatistics(total);
-    LOG.debug("Bucket allocator statistics follow:\n");
-    LOG.debug("  Free bytes={}; used bytes={}; total bytes={}; completelyFreeBuckets={}",
-      total.freeBytes(), total.usedBytes(), total.totalBytes(), total.getCompletelyFreeBuckets());
+    LOG.debug("Bucket allocator statistics follow:");
+    LOG.debug("  Free bytes={}; used bytes={}; total bytes={}; waisted bytes={}; completelyFreeBuckets={}",
+      total.freeBytes(), total.usedBytes(), total.totalBytes(), total.waistedBytes(), total.completelyFreeBuckets());
     for (IndexStatistics s : stats) {
-      LOG.debug("  Object size {}; used={}; free={}; total={}; fullBuckets={}; freeBuckets={}",
-        s.itemSize(), s.usedCount(), s.freeCount(), s.totalCount(), s.getFullBuckets(),
-        s.getFreeBuckets());
+      LOG.debug("  Object size {}; used={}; free={}; total={}; waisted bytes={}; full buckets={}",
+        s.itemSize(), s.usedCount(), s.freeCount(), s.totalCount(), s.waistedBytes(), s.fullBuckets());
     }
   }
 
   IndexStatistics[] getIndexStatistics(IndexStatistics grandTotal) {
     IndexStatistics[] stats = getIndexStatistics();
-    long totalfree = 0, totalused = 0;
-    int fullBuckets = 0, freeBuckets = 0, completelyFreeBuckets = 0;
+    long totalfree = 0, totalused = 0, totalWaisted = 0;
+    int fullBuckets = 0, completelyFreeBuckets = 0;
 
     for (IndexStatistics stat : stats) {
       totalfree += stat.freeBytes();
       totalused += stat.usedBytes();
-      fullBuckets += stat.getFullBuckets();
-      freeBuckets += stat.getFreeBuckets();
-      completelyFreeBuckets += stat.getCompletelyFreeBuckets();
+      totalWaisted += stat.waistedBytes();
+      fullBuckets += stat.fullBuckets();
+      completelyFreeBuckets += stat.completelyFreeBuckets();
     }
-    grandTotal.setTo(totalfree, totalused, 1, fullBuckets, freeBuckets, completelyFreeBuckets);
+    grandTotal.setTo(totalfree, totalused, 1, fullBuckets, completelyFreeBuckets, totalWaisted);
     return stats;
   }
 
