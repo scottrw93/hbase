@@ -23,6 +23,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.client.ColumnFamilyDescriptor;
 import org.apache.hadoop.hbase.io.ByteBuffAllocator;
 import org.apache.hadoop.hbase.io.hfile.BlockType.BlockCategory;
+import org.apache.hadoop.hbase.io.hfile.bucket.BucketCache;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -417,7 +418,7 @@ public class CacheConfig {
   }
 
   public boolean isCombinedBlockCache() {
-    return blockCache instanceof CombinedBlockCache;
+    return blockCache instanceof CombinedBlockCache || blockCache instanceof BucketCache;
   }
 
   public ByteBuffAllocator getByteBuffAllocator() {
