@@ -64,6 +64,10 @@ public final class BlockCacheFactory {
 
   public static final String BUCKET_CACHE_WRITER_QUEUE_KEY = "hbase.bucketcache.writer.queuelength";
 
+  public static final String BUCKET_CACHE_AS_L1_VICTIM_HANDLER_KEY =
+    "hbase.bucketcache.l1.victim.handler.enabled";
+  public static final boolean BUCKET_CACHE_AS_L1_VICTIM_HANDLER_DEFAULT = false;
+
   /**
    * A comma-delimited array of values for use as bucket sizes.
    */
@@ -128,7 +132,17 @@ public final class BlockCacheFactory {
         LOG.warn(
             "From HBase 2.0 onwards only combined mode of LRU cache and bucket cache is available");
       }
-      return bucketCache == null ? l1Cache : new CombinedBlockCache(l1Cache, bucketCache);
+      if (bucketCache == null) {
+        return l1Cache;
+      } else {
+        // In CombinedBlockCache, L1 holds META blocks. It's important that META blocks are always
+        // cached, so we can additionally set BucketCache as victim handler. This way evicted META
+        // blocks will live in the BucketCache, drastically reducing eviction rate (and GC) when
+        // META
+        // blocks don't fit in L1. If META blocks fit in L1, this shouldn't add any overhead.
+        return new CombinedBlockCache(l1Cache, bucketCache, conf.getBoolean(
+          BUCKET_CACHE_AS_L1_VICTIM_HANDLER_KEY, BUCKET_CACHE_AS_L1_VICTIM_HANDLER_DEFAULT));
+      }
     }
   }
 

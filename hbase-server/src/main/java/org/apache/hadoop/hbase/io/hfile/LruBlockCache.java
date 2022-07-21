@@ -1176,7 +1176,9 @@ public class LruBlockCache implements FirstLevelBlockCache {
       List<Runnable> runnables = this.scheduleThreadPool.shutdownNow();
       LOG.debug("Still running " + runnables);
     }
-    this.evictionThread.shutdown();
+    if (evictionThread != null) {
+      this.evictionThread.shutdown();
+    }
   }
 
   /** Clears the cache. Used in tests. */

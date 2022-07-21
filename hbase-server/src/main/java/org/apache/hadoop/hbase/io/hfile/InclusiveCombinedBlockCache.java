@@ -24,8 +24,7 @@ import org.apache.yetus.audience.InterfaceAudience;
 @InterfaceAudience.Private
 public class InclusiveCombinedBlockCache extends CombinedBlockCache {
   public InclusiveCombinedBlockCache(FirstLevelBlockCache l1, BlockCache l2) {
-    super(l1,l2);
-    l1.setVictimCache(l2);
+    super(l1, l2, true);
   }
 
   @Override

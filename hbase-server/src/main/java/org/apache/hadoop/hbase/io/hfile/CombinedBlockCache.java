@@ -40,11 +40,14 @@ public class CombinedBlockCache implements ResizableBlockCache, HeapSize {
   protected final BlockCache l2Cache;
   protected final CombinedCacheStats combinedCacheStats;
 
-  public CombinedBlockCache(FirstLevelBlockCache l1Cache, BlockCache l2Cache) {
+  public CombinedBlockCache(FirstLevelBlockCache l1Cache, BlockCache l2Cache,
+    boolean enableL2VictimHandler) {
     this.l1Cache = l1Cache;
     this.l2Cache = l2Cache;
-    this.combinedCacheStats = new CombinedCacheStats(l1Cache.getStats(),
-        l2Cache.getStats());
+    this.combinedCacheStats = new CombinedCacheStats(l1Cache.getStats(), l2Cache.getStats());
+    if (enableL2VictimHandler) {
+      l1Cache.setVictimCache(l2Cache);
+    }
   }
 
   @Override
