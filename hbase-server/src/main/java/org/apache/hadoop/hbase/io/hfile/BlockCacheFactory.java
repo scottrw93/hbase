@@ -64,6 +64,9 @@ public final class BlockCacheFactory {
 
   public static final String BUCKET_CACHE_WRITER_QUEUE_KEY = "hbase.bucketcache.writer.queuelength";
 
+  public static final String BUCKET_CACHE_AS_L1_KEY = "hbase.bucketcache.l1.enabled";
+  public static final boolean BUCKET_CACHE_AS_L1_DEFAULT = false;
+
   public static final String BUCKET_CACHE_AS_L1_VICTIM_HANDLER_KEY =
     "hbase.bucketcache.l1.victim.handler.enabled";
   public static final boolean BUCKET_CACHE_AS_L1_VICTIM_HANDLER_DEFAULT = false;
@@ -113,6 +116,13 @@ public final class BlockCacheFactory {
       LOG.warn("The config key {} is deprecated now, instead please use {}. In future release "
           + "we will remove the deprecated config.", DEPRECATED_BLOCKCACHE_BLOCKSIZE_KEY,
         BLOCKCACHE_BLOCKSIZE_KEY);
+    }
+    if (conf.getBoolean(BUCKET_CACHE_AS_L1_KEY, BUCKET_CACHE_AS_L1_DEFAULT)) {
+      BucketCache bucketCache = createBucketCache(conf);
+      if (bucketCache == null) {
+        throw new IllegalStateException("Specified " + BUCKET_CACHE_AS_L1_KEY + " but could not create BucketCache");
+      }
+      return bucketCache;
     }
     FirstLevelBlockCache l1Cache = createFirstLevelCache(conf);
     if (l1Cache == null) {
