@@ -48,6 +48,7 @@ import java.util.concurrent.atomic.LongAdder;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.conf.Configuration;
@@ -66,6 +67,7 @@ import org.apache.hadoop.hbase.io.hfile.CacheStats;
 import org.apache.hadoop.hbase.io.hfile.Cacheable;
 import org.apache.hadoop.hbase.io.hfile.CachedBlock;
 import org.apache.hadoop.hbase.io.hfile.HFileBlock;
+import org.apache.hadoop.hbase.io.hfile.VictimHandlingBlockCache;
 import org.apache.hadoop.hbase.nio.ByteBuff;
 import org.apache.hadoop.hbase.nio.RefCnt;
 import org.apache.hadoop.hbase.protobuf.ProtobufMagic;
@@ -100,7 +102,7 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.BucketCacheProtos;
  * blocks) to enlarge cache space via a victim cache.
  */
 @InterfaceAudience.Private
-public class BucketCache implements BlockCache, HeapSize {
+public class BucketCache implements VictimHandlingBlockCache, HeapSize {
   private static final Logger LOG = LoggerFactory.getLogger(BucketCache.class);
 
   /** Priority buckets config */
@@ -475,6 +477,8 @@ public class BucketCache implements BlockCache, HeapSize {
     }
   }
 
+
+
   /**
    * Get the buffer of the block with the specified key.
    * @param key block's cache key
@@ -486,6 +490,12 @@ public class BucketCache implements BlockCache, HeapSize {
   @Override
   public Cacheable getBlock(BlockCacheKey key, boolean caching, boolean repeat,
       boolean updateCacheMetrics) {
+   return getBlockWithPromotion(key, caching, repeat, updateCacheMetrics, null);
+  }
+
+  @Override
+  public Cacheable getBlockWithPromotion(BlockCacheKey key, boolean caching, boolean repeat,
+    boolean updateCacheMetrics, BiConsumer<Cacheable, BlockPriority> promotionCallback) {
     if (!cacheEnabled) {
       return null;
     }
@@ -520,6 +530,9 @@ public class BucketCache implements BlockCache, HeapSize {
           if (updateCacheMetrics) {
             cacheStats.hit(caching, key.isPrimary(), key.getBlockType());
             cacheStats.ioHit(System.nanoTime() - start);
+          }
+          if (promotionCallback != null) {
+            promotionCallback.accept(cachedBlock, bucketEntry.getPriority());
           }
           bucketEntry.access(accessCount.incrementAndGet());
           if (this.ioErrorStartTime > 0) {

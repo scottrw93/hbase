@@ -27,6 +27,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.concurrent.ExecutionException;
+import java.util.function.BiConsumer;
 
 import net.spy.memcached.CachedData;
 import net.spy.memcached.ConnectionFactoryBuilder;
@@ -53,7 +54,7 @@ import org.slf4j.LoggerFactory;
  * greatly.
  */
 @InterfaceAudience.Private
-public class MemcachedBlockCache implements BlockCache {
+public class MemcachedBlockCache implements VictimHandlingBlockCache {
   private static final Logger LOG = LoggerFactory.getLogger(MemcachedBlockCache.class.getName());
 
   // Some memcache versions won't take more than 1024 * 1024. So set the limit below
@@ -126,8 +127,8 @@ public class MemcachedBlockCache implements BlockCache {
   }
 
   @Override
-  public Cacheable getBlock(BlockCacheKey cacheKey, boolean caching,
-                            boolean repeat, boolean updateCacheMetrics) {
+  public Cacheable getBlockWithPromotion(BlockCacheKey cacheKey, boolean caching, boolean repeat,
+    boolean updateCacheMetrics, BiConsumer<Cacheable, BlockPriority> promotionCallback) {
     // Assume that nothing is the block cache
     HFileBlock result = null;
 
@@ -138,8 +139,8 @@ public class MemcachedBlockCache implements BlockCache {
       // and how it handles failures from leaking into the read path.
       if (LOG.isDebugEnabled()) {
         LOG.debug("Exception pulling from memcached [ "
-            + cacheKey.toString()
-            + " ]. Treating as a miss.", e);
+          + cacheKey.toString()
+          + " ]. Treating as a miss.", e);
       }
       result = null;
     } finally {
@@ -149,11 +150,20 @@ public class MemcachedBlockCache implements BlockCache {
           cacheStats.miss(caching, cacheKey.isPrimary(), cacheKey.getBlockType());
         } else {
           cacheStats.hit(caching, cacheKey.isPrimary(), cacheKey.getBlockType());
+          if (promotionCallback != null) {
+            promotionCallback.accept(result, BlockPriority.MULTI);
+          }
         }
       }
     }
 
     return result;
+  }
+
+  @Override
+  public Cacheable getBlock(BlockCacheKey cacheKey, boolean caching,
+                            boolean repeat, boolean updateCacheMetrics) {
+   return getBlockWithPromotion(cacheKey, caching, repeat, updateCacheMetrics, null);
   }
 
   @Override

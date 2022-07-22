@@ -24,6 +24,8 @@ import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.hadoop.hbase.io.HeapSize;
 import org.apache.hadoop.hbase.io.hfile.BlockType.BlockCategory;
 import org.apache.hadoop.hbase.io.hfile.bucket.BucketCache;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * CombinedBlockCache is an abstraction layer that combines
@@ -36,6 +38,8 @@ import org.apache.hadoop.hbase.io.hfile.bucket.BucketCache;
  */
 @InterfaceAudience.Private
 public class CombinedBlockCache implements ResizableBlockCache, HeapSize {
+  private static final Logger LOG = LoggerFactory.getLogger(CombinedBlockCache.class);
+
   protected final FirstLevelBlockCache l1Cache;
   protected final BlockCache l2Cache;
   protected final CombinedCacheStats combinedCacheStats;
@@ -45,8 +49,10 @@ public class CombinedBlockCache implements ResizableBlockCache, HeapSize {
     this.l1Cache = l1Cache;
     this.l2Cache = l2Cache;
     this.combinedCacheStats = new CombinedCacheStats(l1Cache.getStats(), l2Cache.getStats());
-    if (enableL2VictimHandler) {
-      l1Cache.setVictimCache(l2Cache);
+    if (enableL2VictimHandler && l2Cache instanceof VictimHandlingBlockCache) {
+      l1Cache.setVictimCache((VictimHandlingBlockCache) l2Cache);
+    } else if (enableL2VictimHandler) {
+      LOG.warn("Tried to enable L2 victim handler, but L2 ({}) is not a VictimHandlingBlockCache", l2Cache.getClass().getSimpleName());
     }
   }
 

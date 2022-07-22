@@ -228,7 +228,7 @@ public class LruBlockCache implements FirstLevelBlockCache {
    * external cache as L2.
    * Note: See org.apache.hadoop.hbase.io.hfile.MemcachedBlockCache
    */
-  private transient BlockCache victimHandler = null;
+  private transient VictimHandlingBlockCache victimHandler = null;
 
   /**
    * Default constructor.  Specify maximum size and expected average block
@@ -342,7 +342,7 @@ public class LruBlockCache implements FirstLevelBlockCache {
   }
 
   @Override
-  public void setVictimCache(BlockCache victimCache) {
+  public void setVictimCache(VictimHandlingBlockCache victimCache) {
     if (victimHandler != null) {
       throw new IllegalArgumentException("The victim cache has already been set");
     }
@@ -532,14 +532,13 @@ public class LruBlockCache implements FirstLevelBlockCache {
       // And it's already a miss then the l2 will also be a miss.
       if (victimHandler != null && !repeat) {
         // The handler will increase result's refCnt for RPC, so need no extra retain.
-        Cacheable result = victimHandler.getBlock(cacheKey, caching, repeat, updateCacheMetrics);
-        // Promote this to L1.
-        if (result != null) {
-          if (caching) {
-            cacheBlock(cacheKey, result, /* inMemory = */ false);
-          }
-        }
-        return result;
+        return victimHandler.getBlockWithPromotion(cacheKey, caching, repeat, updateCacheMetrics,
+          (block, priority) -> {
+            if (caching && priority == BlockPriority.MULTI) {
+              // Promote this to L1.
+              cacheBlock(cacheKey, block, /* inMemory = */ false);
+            }
+          });
       }
       return null;
     }

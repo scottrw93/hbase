@@ -66,7 +66,7 @@ public final class TinyLfuBlockCache implements FirstLevelBlockCache {
   private final long maxBlockSize;
   private final CacheStats stats;
 
-  private transient BlockCache victimCache;
+  private transient VictimHandlingBlockCache victimCache;
 
   transient final Cache<BlockCacheKey, Cacheable> cache;
 
@@ -113,7 +113,7 @@ public final class TinyLfuBlockCache implements FirstLevelBlockCache {
   }
 
   @Override
-  public void setVictimCache(BlockCache victimCache) {
+  public void setVictimCache(VictimHandlingBlockCache victimCache) {
     if (this.victimCache != null) {
       throw new IllegalArgumentException("The victim cache has already been set");
     }
@@ -173,10 +173,13 @@ public final class TinyLfuBlockCache implements FirstLevelBlockCache {
         stats.miss(caching, cacheKey.isPrimary(), cacheKey.getBlockType());
       }
       if (victimCache != null) {
-        value = victimCache.getBlock(cacheKey, caching, repeat, updateCacheMetrics);
-        if ((value != null) && caching) {
-          cacheBlock(cacheKey, value);
-        }
+        return victimCache.getBlockWithPromotion(cacheKey, caching, repeat, updateCacheMetrics,
+          (block, priority) -> {
+            if (caching && priority == BlockPriority.MULTI) {
+              // Promote this to L1.
+              cacheBlock(cacheKey, block, /* inMemory = */ false);
+            }
+          });
       }
     } else if (updateCacheMetrics) {
       stats.hit(caching, cacheKey.isPrimary(), cacheKey.getBlockType());

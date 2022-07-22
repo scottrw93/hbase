@@ -41,5 +41,5 @@ public interface FirstLevelBlockCache extends ResizableBlockCache, HeapSize {
    * @param victimCache the second level cache
    * @throws IllegalArgumentException if the victim cache had already been set
    */
-  void setVictimCache(BlockCache victimCache);
+  void setVictimCache(VictimHandlingBlockCache victimCache);
 }
