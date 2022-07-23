@@ -150,6 +150,9 @@ public class LruBlockCache implements FirstLevelBlockCache {
   private static final String LRU_MAX_BLOCK_SIZE = "hbase.lru.max.block.size";
   private static final long DEFAULT_MAX_BLOCK_SIZE = 16L * 1024L * 1024L;
 
+  private static final String VICTIM_PROMOTION_FACTOR_KEY = "hbase.lru.victim.promotion.factor";
+  private static final int DEFAULT_VICTIM_PROMOTION_FACTOR = 100;
+
   /**
    * Defined the cache map as {@link ConcurrentHashMap} here, because in
    * {@link LruBlockCache#getBlock}, we need to guarantee the atomicity of map#computeIfPresent
@@ -163,6 +166,7 @@ public class LruBlockCache implements FirstLevelBlockCache {
   private transient final ReentrantLock evictionLock = new ReentrantLock(true);
 
   private final long maxBlockSize;
+  private final int victimPromotionFactor;
 
   /** Volatile boolean to track if we are in an eviction process or not */
   private volatile boolean evictionInProgress = false;
@@ -257,7 +261,7 @@ public class LruBlockCache implements FirstLevelBlockCache {
         DEFAULT_MEMORY_FACTOR,
         DEFAULT_HARD_CAPACITY_LIMIT_FACTOR,
         false,
-        DEFAULT_MAX_BLOCK_SIZE);
+        DEFAULT_MAX_BLOCK_SIZE, DEFAULT_VICTIM_PROMOTION_FACTOR);
   }
 
   public LruBlockCache(long maxSize, long blockSize, boolean evictionThread, Configuration conf) {
@@ -273,7 +277,8 @@ public class LruBlockCache implements FirstLevelBlockCache {
         conf.getFloat(LRU_HARD_CAPACITY_LIMIT_FACTOR_CONFIG_NAME,
                       DEFAULT_HARD_CAPACITY_LIMIT_FACTOR),
         conf.getBoolean(LRU_IN_MEMORY_FORCE_MODE_CONFIG_NAME, DEFAULT_IN_MEMORY_FORCE_MODE),
-        conf.getLong(LRU_MAX_BLOCK_SIZE, DEFAULT_MAX_BLOCK_SIZE));
+        conf.getLong(LRU_MAX_BLOCK_SIZE, DEFAULT_MAX_BLOCK_SIZE),
+        conf.getInt(VICTIM_PROMOTION_FACTOR_KEY, DEFAULT_VICTIM_PROMOTION_FACTOR));
   }
 
   public LruBlockCache(long maxSize, long blockSize, Configuration conf) {
@@ -283,24 +288,26 @@ public class LruBlockCache implements FirstLevelBlockCache {
   /**
    * Configurable constructor.  Use this constructor if not using defaults.
    *
-   * @param maxSize             maximum size of this cache, in bytes
-   * @param blockSize           expected average size of blocks, in bytes
-   * @param evictionThread      whether to run evictions in a bg thread or not
-   * @param mapInitialSize      initial size of backing ConcurrentHashMap
-   * @param mapLoadFactor       initial load factor of backing ConcurrentHashMap
-   * @param mapConcurrencyLevel initial concurrency factor for backing CHM
-   * @param minFactor           percentage of total size that eviction will evict until
-   * @param acceptableFactor    percentage of total size that triggers eviction
-   * @param singleFactor        percentage of total size for single-access blocks
-   * @param multiFactor         percentage of total size for multiple-access blocks
-   * @param memoryFactor        percentage of total size for in-memory blocks
+   * @param maxSize               maximum size of this cache, in bytes
+   * @param blockSize             expected average size of blocks, in bytes
+   * @param evictionThread        whether to run evictions in a bg thread or not
+   * @param mapInitialSize        initial size of backing ConcurrentHashMap
+   * @param mapLoadFactor         initial load factor of backing ConcurrentHashMap
+   * @param mapConcurrencyLevel   initial concurrency factor for backing CHM
+   * @param minFactor             percentage of total size that eviction will evict until
+   * @param acceptableFactor      percentage of total size that triggers eviction
+   * @param singleFactor          percentage of total size for single-access blocks
+   * @param multiFactor           percentage of total size for multiple-access blocks
+   * @param memoryFactor          percentage of total size for in-memory blocks
+   * @param victimPromotionFactor
    */
   public LruBlockCache(long maxSize, long blockSize, boolean evictionThread,
       int mapInitialSize, float mapLoadFactor, int mapConcurrencyLevel,
       float minFactor, float acceptableFactor, float singleFactor,
       float multiFactor, float memoryFactor, float hardLimitFactor,
-      boolean forceInMemory, long maxBlockSize) {
+      boolean forceInMemory, long maxBlockSize, int victimPromotionFactor) {
     this.maxBlockSize = maxBlockSize;
+    this.victimPromotionFactor = victimPromotionFactor;
     if(singleFactor + multiFactor + memoryFactor != 1 ||
         singleFactor < 0 || multiFactor < 0 || memoryFactor < 0) {
       throw new IllegalArgumentException("Single, multi, and memory factors " +
@@ -534,7 +541,11 @@ public class LruBlockCache implements FirstLevelBlockCache {
         // The handler will increase result's refCnt for RPC, so need no extra retain.
         return victimHandler.getBlockWithPromotion(cacheKey, caching, repeat, updateCacheMetrics,
           (block, priority) -> {
-            if (caching && priority == BlockPriority.MULTI) {
+            if (caching && cacheKey.getOffset() % 100 <  victimPromotionFactor) {
+              stats.victimPromotion();
+              if (LOG.isTraceEnabled()) {
+                LOG.trace("Promoting victim with cacheKey={}", cacheKey);
+              }
               // Promote this to L1.
               cacheBlock(cacheKey, block, /* inMemory = */ false);
             }
@@ -1015,7 +1026,8 @@ public class LruBlockCache implements FirstLevelBlockCache {
           "0,": (StringUtils.formatPercent(stats.getHitCachingRatio(), 2) + ", ")) +
         "evictions=" + stats.getEvictionCount() + ", " +
         "evicted=" + stats.getEvictedCount() + ", " +
-        "evictedPerRun=" + stats.evictedPerEviction());
+        "evictedPerRun=" + stats.evictedPerEviction(),
+        ", victimPromotionCount=" + stats.getVictimPromotionCount());
   }
 
   /**

@@ -95,6 +95,7 @@ public class CacheStats {
   private final LongAdder generalBloomMetaHitCount = new LongAdder();
   private final LongAdder deleteFamilyBloomHitCount = new LongAdder();
   private final LongAdder trailerHitCount = new LongAdder();
+  private final LongAdder victimPromotionCount = new LongAdder();
 
   /** The number of metrics periods to include in window */
   private final int numPeriodsInWindow;
@@ -144,7 +145,8 @@ public class CacheStats {
       ", evictedBlockCount=" + getEvictedCount() +
       ", primaryMissCount=" + getPrimaryMissCount() +
       ", primaryHitCount=" + getPrimaryHitCount() +
-      ", evictedAgeMean=" + snapshot.getMean();
+      ", evictedAgeMean=" + snapshot.getMean() +
+      ", victimPromotionCount=" + getVictimPromotionCount();
   }
 
 
@@ -192,6 +194,14 @@ public class CacheStats {
         // Ignore it for now. This is metrics don't exception.
         break;
     }
+  }
+
+  public void victimPromotion() {
+    victimPromotionCount.increment();
+  }
+
+  public long getVictimPromotionCount() {
+    return victimPromotionCount.sum();
   }
 
   public void hit(boolean caching, boolean primary, BlockType type) {
