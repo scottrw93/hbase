@@ -1026,7 +1026,7 @@ public class LruBlockCache implements FirstLevelBlockCache {
           "0,": (StringUtils.formatPercent(stats.getHitCachingRatio(), 2) + ", ")) +
         "evictions=" + stats.getEvictionCount() + ", " +
         "evicted=" + stats.getEvictedCount() + ", " +
-        "evictedPerRun=" + stats.evictedPerEviction(),
+        "evictedPerRun=" + stats.evictedPerEviction() +
         ", victimPromotionCount=" + stats.getVictimPromotionCount());
   }
 
