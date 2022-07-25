@@ -99,6 +99,10 @@ public interface MetricsTableWrapperAggregate {
    */
   long getAvgStoreFileAge(String table);
 
+  long getStaticIndexSize(String table);
+
+  long getStaticBloomSize(String table);
+
   /**
    *  @return Number of reference files for this table
    */

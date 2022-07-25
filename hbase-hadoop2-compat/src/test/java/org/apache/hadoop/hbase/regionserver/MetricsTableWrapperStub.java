@@ -109,6 +109,15 @@ public class MetricsTableWrapperStub implements MetricsTableWrapperAggregate {
   }
 
   @Override
+  public long getStaticIndexSize(String table) {
+    return 99;
+  }
+
+  @Override
+  public long getStaticBloomSize(String table) {
+    return 111;
+  }
+  @Override
   public Map<String, Long> getMemstoreOnlyRowReadsCount(String table) {
     Map<String, Long> map = new HashMap<String, Long>();
     map.put("table#info", 3L);

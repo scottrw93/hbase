@@ -94,6 +94,10 @@ public class MetricsTableWrapperAggregateImpl implements MetricsTableWrapperAggr
                   (long) store.getAvgStoreFileAge().getAsDouble() * store.getStorefilesCount();
             }
             mt.storeCount += 1;
+
+            mt.staticIndexSize += store.getTotalStaticIndexSize();
+            mt.staticBloomSize += store.getTotalStaticBloomSize();
+
             tempKey = tbl.getNameAsString() + HASH + familyName;
             Long tempVal = mt.perStoreMemstoreOnlyReadCount.get(tempKey);
             if (tempVal == null) {
@@ -295,6 +299,24 @@ public class MetricsTableWrapperAggregateImpl implements MetricsTableWrapperAggr
         : (metricsTable.totalStoreFileAge / metricsTable.storeFileCount);
   }
 
+  @Override public long getStaticIndexSize(String table) {
+    MetricsTableValues metricsTable = metricsTableMap.get(TableName.valueOf(table));
+    if (metricsTable == null) {
+      return 0;
+    }
+
+    return metricsTable.staticIndexSize;
+  }
+
+  @Override public long getStaticBloomSize(String table) {
+    MetricsTableValues metricsTable = metricsTableMap.get(TableName.valueOf(table));
+    if (metricsTable == null) {
+      return 0;
+    }
+
+    return metricsTable.staticBloomSize;
+  }
+
   @Override
   public long getNumReferenceFiles(String table) {
     MetricsTableValues metricsTable = metricsTableMap.get(TableName.valueOf(table));
@@ -340,6 +362,10 @@ public class MetricsTableWrapperAggregateImpl implements MetricsTableWrapperAggr
     long maxStoreFileAge;
     long minStoreFileAge = Long.MAX_VALUE;
     long totalStoreFileAge;
+
+    long staticIndexSize;
+
+    long staticBloomSize;
     long referenceFileCount;
     long cpRequestCount;
     Map<String, Long> perStoreMemstoreOnlyReadCount = new HashMap<>();

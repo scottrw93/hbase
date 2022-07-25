@@ -315,6 +315,12 @@ public class MetricsTableSourceImpl implements MetricsTableSource {
         mrb.addGauge(Interns.info(tableNamePrefix + MetricsRegionServerSource.AVG_STORE_FILE_AGE,
             MetricsRegionServerSource.AVG_STORE_FILE_AGE_DESC),
             tableWrapperAgg.getAvgStoreFileAge(tableName.getNameAsString()));
+        mrb.addGauge(Interns.info(tableNamePrefix + MetricsRegionServerSource.STATIC_BLOOM_SIZE,
+          MetricsRegionServerSource.STATIC_BLOOM_SIZE_DESC),
+          tableWrapperAgg.getStaticBloomSize(tableName.getNameAsString()));
+        mrb.addGauge(Interns.info(tableNamePrefix + MetricsRegionServerSource.STATIC_INDEX_SIZE,
+            MetricsRegionServerSource.STATIC_INDEX_SIZE),
+          tableWrapperAgg.getStaticIndexSize(tableName.getNameAsString()));
         mrb.addGauge(Interns.info(tableNamePrefix + MetricsRegionServerSource.NUM_REFERENCE_FILES,
             MetricsRegionServerSource.NUM_REFERENCE_FILES_DESC),
             tableWrapperAgg.getNumReferenceFiles(tableName.getNameAsString()));
