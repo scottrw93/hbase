@@ -39,6 +39,7 @@ import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.io.TimeRange;
 import org.apache.hadoop.hbase.io.hfile.BlockType;
+import org.apache.hadoop.hbase.io.hfile.BloomFilterMetrics;
 import org.apache.hadoop.hbase.io.hfile.CacheConfig;
 import org.apache.hadoop.hbase.io.hfile.HFile;
 import org.apache.hadoop.hbase.io.hfile.HFileBlock;
@@ -65,6 +66,7 @@ public class StoreFileReader {
 
   protected BloomFilter generalBloomFilter = null;
   protected BloomFilter deleteFamilyBloomFilter = null;
+  private BloomFilterMetrics bloomFilterMetrics = null;
   protected BloomType bloomFilterType;
   private final HFile.Reader reader;
   protected long sequenceID = -1;
@@ -267,6 +269,9 @@ public class StoreFileReader {
       case ROWPREFIX_FIXED_LENGTH:
         return passesGeneralRowPrefixBloomFilter(scan);
       default:
+        if (scan.isGetScan()) {
+          bloomFilterMetrics.incrementEligible();
+        }
         return true;
     }
   }
@@ -309,6 +314,7 @@ public class StoreFileReader {
   private boolean passesGeneralRowBloomFilter(byte[] row, int rowOffset, int rowLen) {
     BloomFilter bloomFilter = this.generalBloomFilter;
     if (bloomFilter == null) {
+      bloomFilterMetrics.incrementEligible();
       return true;
     }
 
@@ -333,6 +339,7 @@ public class StoreFileReader {
   public boolean passesGeneralRowColBloomFilter(Cell cell) {
     BloomFilter bloomFilter = this.generalBloomFilter;
     if (bloomFilter == null) {
+      bloomFilterMetrics.incrementEligible();
       return true;
     }
     // Used in ROW_COL bloom
@@ -355,6 +362,7 @@ public class StoreFileReader {
   private boolean passesGeneralRowPrefixBloomFilter(Scan scan) {
     BloomFilter bloomFilter = this.generalBloomFilter;
     if (bloomFilter == null) {
+      bloomFilterMetrics.incrementEligible();
       return true;
     }
 
@@ -504,12 +512,13 @@ public class StoreFileReader {
   }
 
   public void loadBloomfilter() {
-    this.loadBloomfilter(BlockType.GENERAL_BLOOM_META);
-    this.loadBloomfilter(BlockType.DELETE_FAMILY_BLOOM_META);
+    this.loadBloomfilter(BlockType.GENERAL_BLOOM_META, null);
+    this.loadBloomfilter(BlockType.DELETE_FAMILY_BLOOM_META, null);
   }
 
-  public void loadBloomfilter(BlockType blockType) {
+  public void loadBloomfilter(BlockType blockType, BloomFilterMetrics metrics) {
     try {
+      this.bloomFilterMetrics = metrics;
       if (blockType == BlockType.GENERAL_BLOOM_META) {
         if (this.generalBloomFilter != null)
           return; // Bloom has been loaded
@@ -522,7 +531,7 @@ public class StoreFileReader {
                 "valid bloom filter type not found in FileInfo");
           } else {
             generalBloomFilter = BloomFilterFactory.createFromMeta(bloomMeta,
-                reader);
+                reader, metrics);
             if (LOG.isTraceEnabled()) {
               LOG.trace("Loaded " + bloomFilterType.toString() + " "
                 + generalBloomFilter.getClass().getSimpleName()
@@ -536,8 +545,10 @@ public class StoreFileReader {
 
         DataInput bloomMeta = reader.getDeleteBloomFilterMetadata();
         if (bloomMeta != null) {
+          // don't pass in metrics for the delete family bloom for now since the
+          // goal is to give users insight into blooms _they_ configured.
           deleteFamilyBloomFilter = BloomFilterFactory.createFromMeta(
-              bloomMeta, reader);
+              bloomMeta, reader, null);
           LOG.info("Loaded Delete Family Bloom ("
               + deleteFamilyBloomFilter.getClass().getSimpleName()
               + ") metadata for " + reader.getName());

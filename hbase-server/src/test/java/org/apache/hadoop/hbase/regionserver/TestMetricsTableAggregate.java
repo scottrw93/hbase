@@ -98,6 +98,10 @@ public class TestMetricsTableAggregate {
 
     HELPER.assertGauge(pre + "staticIndexSize", 99, agg);
     HELPER.assertGauge(pre + "staticBloomSize", 111, agg);
+
+    HELPER.assertCounter(pre + "bloomFilterRequestsCount", 222, agg);
+    HELPER.assertCounter(pre + "bloomFilterNegativeResultsCount", 333, agg);
+    HELPER.assertCounter(pre + "bloomFilterEligibleRequestsCount", 444, agg);
   }
 
   @Test

@@ -254,7 +254,7 @@ public class CompoundBloomFilterWriter extends CompoundBloomFilterBase
      * although the two metadata formats do not have to be consistent. This
      * does have to be consistent with how {@link
      * CompoundBloomFilter#CompoundBloomFilter(DataInput,
-     * org.apache.hadoop.hbase.io.hfile.HFile.Reader)} reads fields.
+     * org.apache.hadoop.hbase.io.hfile.HFile.Reader, BloomFilterMetrics)} reads fields.
      */
     @Override
     public void write(DataOutput out) throws IOException {

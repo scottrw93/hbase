@@ -74,6 +74,7 @@ import org.apache.hadoop.hbase.conf.PropagatingConfigurationObserver;
 import org.apache.hadoop.hbase.io.HeapSize;
 import org.apache.hadoop.hbase.io.compress.Compression;
 import org.apache.hadoop.hbase.io.crypto.Encryption;
+import org.apache.hadoop.hbase.io.hfile.BloomFilterMetrics;
 import org.apache.hadoop.hbase.io.hfile.CacheConfig;
 import org.apache.hadoop.hbase.io.hfile.HFile;
 import org.apache.hadoop.hbase.io.hfile.HFileContext;
@@ -167,6 +168,8 @@ public class HStore implements Store, HeapSize, StoreConfigInformation,
   private LongAdder memstoreOnlyRowReadsCount = new LongAdder();
   // rows that has cells from both memstore and files (or only files)
   private LongAdder mixedRowReadsCount = new LongAdder();
+
+  private BloomFilterMetrics bloomFilterMetrics = new BloomFilterMetrics();
 
   private boolean cacheOnWriteLogged;
 
@@ -713,7 +716,7 @@ public class HStore implements Store, HeapSize, StoreConfigInformation,
   private HStoreFile createStoreFileAndReader(StoreFileInfo info) throws IOException {
     info.setRegionCoprocessorHost(this.region.getCoprocessorHost());
     HStoreFile storeFile = new HStoreFile(info, getColumnFamilyDescriptor().getBloomFilterType(),
-            getCacheConfig());
+            getCacheConfig(), bloomFilterMetrics);
     storeFile.initReader();
     return storeFile;
   }
@@ -2905,5 +2908,20 @@ public class HStore implements Store, HeapSize, StoreConfigInformation,
     } else {
       mixedRowReadsCount.increment();
     }
+  }
+
+  @Override
+  public long getBloomFilterRequestsCount() {
+    return bloomFilterMetrics.getRequestsCount();
+  }
+
+  @Override
+  public long getBloomFilterNegativeResultsCount() {
+    return bloomFilterMetrics.getNegativeResultsCount();
+  }
+
+  @Override
+  public long getBloomFilterEligibleRequestsCount() {
+    return bloomFilterMetrics.getEligibleRequestsCount();
   }
 }

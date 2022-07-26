@@ -117,6 +117,22 @@ public class MetricsTableWrapperStub implements MetricsTableWrapperAggregate {
   public long getStaticBloomSize(String table) {
     return 111;
   }
+
+  @Override
+  public long getBloomFilterRequestsCount(String table) {
+    return 222;
+  }
+
+  @Override
+  public long getBloomFilterNegativeResultsCount(String table) {
+    return 333;
+  }
+
+  @Override
+  public long getBloomFilterEligibleRequestsCount(String table) {
+    return 444;
+  }
+
   @Override
   public Map<String, Long> getMemstoreOnlyRowReadsCount(String table) {
     Map<String, Long> map = new HashMap<String, Long>();

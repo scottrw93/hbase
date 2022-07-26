@@ -321,6 +321,15 @@ public class MetricsTableSourceImpl implements MetricsTableSource {
         mrb.addGauge(Interns.info(tableNamePrefix + MetricsRegionServerSource.STATIC_INDEX_SIZE,
             MetricsRegionServerSource.STATIC_INDEX_SIZE),
           tableWrapperAgg.getStaticIndexSize(tableName.getNameAsString()));
+        mrb.addCounter(Interns.info(tableNamePrefix + MetricsRegionServerSource.BLOOM_FILTER_REQUESTS_COUNT,
+            MetricsRegionServerSource.BLOOM_FILTER_REQUESTS_COUNT_DESC),
+          tableWrapperAgg.getBloomFilterRequestsCount(tableName.getNameAsString()));
+        mrb.addCounter(Interns.info(tableNamePrefix + MetricsRegionServerSource.BLOOM_FILTER_NEGATIVE_RESULTS_COUNT,
+            MetricsRegionServerSource.BLOOM_FILTER_NEGATIVE_RESULTS_COUNT_DESC),
+          tableWrapperAgg.getBloomFilterNegativeResultsCount(tableName.getNameAsString()));
+        mrb.addCounter(Interns.info(tableNamePrefix + MetricsRegionServerSource.BLOOM_FILTER_ELIGIBLE_REQUESTS_COUNT,
+            MetricsRegionServerSource.BLOOM_FILTER_ELIGIBLE_REQUESTS_COUNT_DESC),
+          tableWrapperAgg.getBloomFilterEligibleRequestsCount(tableName.getNameAsString()));
         mrb.addGauge(Interns.info(tableNamePrefix + MetricsRegionServerSource.NUM_REFERENCE_FILES,
             MetricsRegionServerSource.NUM_REFERENCE_FILES_DESC),
             tableWrapperAgg.getNumReferenceFiles(tableName.getNameAsString()));

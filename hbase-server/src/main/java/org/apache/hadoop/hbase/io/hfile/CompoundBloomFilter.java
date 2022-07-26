@@ -45,6 +45,7 @@ public class CompoundBloomFilter extends CompoundBloomFilterBase
 
   /** Used to load chunks on demand */
   private HFile.Reader reader;
+  private final BloomFilterMetrics metrics;
 
   private HFileBlockIndex.BlockIndexReader index;
 
@@ -59,11 +60,14 @@ public class CompoundBloomFilter extends CompoundBloomFilterBase
    * with what {@link CompoundBloomFilterWriter} does.
    *
    * @param meta serialized Bloom filter metadata without any magic blocks
+   * @param reader reader for hfile
+   * @param metrics for collecting bloom filter metrics. may be null
    * @throws IOException
    */
-  public CompoundBloomFilter(DataInput meta, HFile.Reader reader)
+  public CompoundBloomFilter(DataInput meta, HFile.Reader reader, BloomFilterMetrics metrics)
       throws IOException {
     this.reader = reader;
+    this.metrics = metrics;
 
     totalByteSize = meta.readLong();
     hashCount = meta.readInt();
@@ -94,6 +98,14 @@ public class CompoundBloomFilter extends CompoundBloomFilterBase
 
   @Override
   public boolean contains(byte[] key, int keyOffset, int keyLength, ByteBuff bloom) {
+    boolean result = containsInternal(key, keyOffset, keyLength, bloom);
+    if (metrics != null) {
+      metrics.incrementRequests(result);
+    }
+    return result;
+  }
+
+  private boolean containsInternal(byte[] key, int keyOffset, int keyLength, ByteBuff bloom) {
     int block = index.rootBlockContainingKey(key, keyOffset, keyLength);
     if (block < 0) {
       return false; // This key is not in the file.
@@ -135,6 +147,14 @@ public class CompoundBloomFilter extends CompoundBloomFilterBase
 
   @Override
   public boolean contains(Cell keyCell, ByteBuff bloom, BloomType type) {
+    boolean result = containsInternal(keyCell, bloom, type);
+    if (metrics != null) {
+      metrics.incrementRequests(result);
+    }
+    return result;
+  }
+
+  private boolean containsInternal(Cell keyCell, ByteBuff bloom, BloomType type) {
     int block = index.rootBlockContainingKey(keyCell);
     if (block < 0) {
       return false; // This key is not in the file.

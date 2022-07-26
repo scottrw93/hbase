@@ -292,4 +292,20 @@ public interface Store {
    * @return the number of read requests from the files under this store.
    */
   long getMixedRowReadsCount();
+
+  /**
+   * @return Count of bloom filter results for this store.
+   */
+  long getBloomFilterRequestsCount();
+
+  /**
+   * @return Count of negative results for bloom filter requests for this store.
+   */
+  long getBloomFilterNegativeResultsCount();
+
+  /**
+   * @return Count of requests which could have used bloom filters, but they weren't configured
+   * or loaded.
+   */
+  long getBloomFilterEligibleRequestsCount();
 }
