@@ -40,6 +40,8 @@ import org.apache.hadoop.hbase.io.compress.Compression;
 import org.apache.hadoop.hbase.io.encoding.DataBlockEncoder;
 import org.apache.hadoop.hbase.io.encoding.DataBlockEncoding;
 import org.apache.hadoop.hbase.io.encoding.HFileBlockDecodingContext;
+import org.apache.hadoop.hbase.ipc.RpcCall;
+import org.apache.hadoop.hbase.ipc.RpcServer;
 import org.apache.hadoop.hbase.nio.ByteBuff;
 import org.apache.hadoop.hbase.regionserver.KeyValueScanner;
 import org.apache.hadoop.hbase.trace.TraceUtil;
@@ -1341,7 +1343,9 @@ public abstract class HFileReaderImpl implements HFile.Reader, Configurable {
         BlockType.BlockCategory category = hfileBlock.getBlockType().getCategory();
 
         if (LOG.isTraceEnabled()) {
-          LOG.trace("From Disk (cacheBlock? {}, cacheBlockOnRead? {}, cacheIsPresent? {}): {}",
+          LOG.trace("From Disk (cacheBlock? {}, cacheBlockOnRead? {}, cacheIsPresent? {}, user={}, requestParam={}): {}",
+            RpcServer.getRequestUserName(),
+            RpcServer.getCurrentCall().map(RpcCall::getParam),
             cacheBlock, cacheConf.shouldCacheBlockOnRead(category), cacheConf.getBlockCache().isPresent(), unpacked);
         }
 
