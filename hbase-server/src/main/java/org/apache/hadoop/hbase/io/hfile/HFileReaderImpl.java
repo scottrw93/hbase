@@ -1340,6 +1340,11 @@ public abstract class HFileReaderImpl implements HFile.Reader, Configurable {
         HFileBlock unpacked = hfileBlock.unpack(hfileContext, fsBlockReader);
         BlockType.BlockCategory category = hfileBlock.getBlockType().getCategory();
 
+        if (LOG.isTraceEnabled()) {
+          LOG.trace("From Disk (cacheBlock? {}, cacheBlockOnRead? {}, cacheIsPresent? {}): {}",
+            cacheBlock, cacheConf.shouldCacheBlockOnRead(category), cacheConf.getBlockCache().isPresent(), unpacked);
+        }
+
         // Cache the block if necessary
         cacheConf.getBlockCache().ifPresent(cache -> {
           if (cacheBlock && cacheConf.shouldCacheBlockOnRead(category)) {
