@@ -31,6 +31,7 @@ BlockCache bc;
 </%java>
 <%import>
 java.util.Map;
+org.apache.hadoop.hbase.io.hfile.BlockCacheUtil;
 org.apache.hadoop.hbase.io.hfile.BlockCacheUtil.CachedBlocksByFile;
 org.apache.hadoop.hbase.io.hfile.AgeSnapshot;
 org.apache.hadoop.hbase.io.hfile.CachedBlock;
