@@ -27,7 +27,6 @@ BlockCache bc;
   String bcName = bc == null ? null : bc.getClass().getSimpleName();
   BlockCache [] bcs = bc == null ? null : bc.getBlockCaches();
   boolean evictions = bcs != null && bcs.length > 1;
-  int maxCachedBlocksByFile = BlockCacheUtil.getMaxCachedBlocksByFile(config);
 </%java>
 <%import>
 java.util.Map;
@@ -283,7 +282,8 @@ are combined counts. Request count is sum of hits and misses.</p>
 <%java>
   String bcUrl = "http://hbase.apache.org/devapidocs/" + bc.getClass().getName().replaceAll("\\.", "/") + ".html";
   String bcName = bc.getClass().getSimpleName();
-
+  int maxCachedBlocksByFile = BlockCacheUtil.getMaxCachedBlocksByFile(config);
+  
   boolean bucketCache = bc.getClass().getSimpleName().equals("BucketCache");
   BucketCacheStats bucketCacheStats = null;
   BucketAllocator bucketAllocator = null;
