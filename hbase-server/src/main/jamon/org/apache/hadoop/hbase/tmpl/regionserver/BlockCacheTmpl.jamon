@@ -362,7 +362,7 @@ View block cache <a href="?format=json&bcn=<% name %>">as JSON</a> | Block cache
 <br>
 <b>Note</b>: JSON view of block cache will be incomplete, because block count <% bc.getBlockCount() %> is greater than <i>hbase.ui.blockcache.by.file.max</i> value of <% maxCachedBlocksByFile %>.
 Increase that value to get a complete picture.
-</%if%>
+</%if>
 </p>
 </%def>
 
