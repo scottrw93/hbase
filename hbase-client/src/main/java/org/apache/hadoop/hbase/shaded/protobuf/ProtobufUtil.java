@@ -22,9 +22,15 @@ import static org.apache.hadoop.hbase.protobuf.ProtobufMagic.PB_MAGIC;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.invoke.CallSite;
+import java.lang.invoke.LambdaMetafactory;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.nio.ByteBuffer;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
@@ -40,6 +46,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -196,6 +203,7 @@ import org.apache.hadoop.hbase.util.Methods;
 import org.apache.hadoop.hbase.util.VersionInfo;
 import org.apache.hadoop.ipc.RemoteException;
 import org.apache.hbase.thirdparty.com.google.common.io.ByteStreams;
+import org.apache.hbase.thirdparty.com.google.common.reflect.ClassPath;
 import org.apache.hbase.thirdparty.com.google.gson.JsonArray;
 import org.apache.hbase.thirdparty.com.google.gson.JsonElement;
 import org.apache.hbase.thirdparty.com.google.protobuf.ByteString;
@@ -210,6 +218,8 @@ import org.apache.hbase.thirdparty.com.google.protobuf.TextFormat;
 import org.apache.hbase.thirdparty.com.google.protobuf.UnsafeByteOperations;
 import org.apache.hbase.thirdparty.org.apache.commons.collections4.CollectionUtils;
 import org.apache.yetus.audience.InterfaceAudience;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Protobufs utility.
@@ -221,6 +231,7 @@ import org.apache.yetus.audience.InterfaceAudience;
  */
 @InterfaceAudience.Private // TODO: some clients (Hive, etc) use this class
 public final class ProtobufUtil {
+  private static final Logger LOG = LoggerFactory.getLogger(ProtobufUtil.class);
 
   private ProtobufUtil() {
   }
@@ -1571,6 +1582,48 @@ public final class ProtobufUtil {
     return builder.build();
   }
 
+  private static final Map<String, Function<Object, Object>> COMPARATOR_CREATORS;
+  static {
+    COMPARATOR_CREATORS = new HashMap<>();
+    try {
+      Set<? extends Class<? extends ByteArrayComparable>> classes =
+          ClassPath.from(ClassLoaderHolder.CLASS_LOADER).getAllClasses().stream().filter(
+                  clazz -> clazz.getPackageName().equalsIgnoreCase(ByteArrayComparable.class.getPackage().getName()))
+              .map(clazz -> clazz.load())
+              .filter(clazz -> !Modifier.isAbstract(clazz.getModifiers()))
+              .filter(clazz -> ByteArrayComparable.class.isAssignableFrom(clazz))
+              .map(clazz -> (Class<? extends ByteArrayComparable>) clazz)
+              .collect(Collectors.toSet());
+
+      MethodHandles.Lookup lookup = MethodHandles.lookup();
+      for (Class<? extends ByteArrayComparable> clazz : classes) {
+        try {
+          Method method = clazz.getMethod("parseFrom", byte[].class);
+          MethodHandle methodHandle = lookup.unreflect(method);
+          MethodType instantiatedMethodType = methodHandle.type();
+          CallSite site = LambdaMetafactory.metafactory(lookup, "apply",
+              MethodType.methodType(Function.class), MethodType.methodType(Object.class, Object.class), methodHandle, instantiatedMethodType);
+
+          COMPARATOR_CREATORS.put(clazz.getName(), (Function<Object, Object>) site.getTarget().invoke());
+        } catch (NoSuchMethodException e) {
+          // pass
+        } catch (Throwable e) {
+          throw new RuntimeException(e);
+        }
+
+      }
+    } catch (IOException e) {
+      LOG.warn("Failed to load filter classes, will fallback on Class.forName at runtime", e);
+    }
+  }
+
+  public static AtomicBoolean USE_CREATOR = new AtomicBoolean(true);
+
+  public static ByteArrayComparable toComparator(ComparatorProtos.Comparator proto)
+      throws IOException {
+    return toComparator(proto, true);
+  }
+
   /**
    * Convert a protocol buffer Comparator to a ByteArrayComparable
    *
@@ -1578,11 +1631,21 @@ public final class ProtobufUtil {
    * @return the converted ByteArrayComparable
    */
   @SuppressWarnings("unchecked")
-  public static ByteArrayComparable toComparator(ComparatorProtos.Comparator proto)
+  public static ByteArrayComparable toComparator(ComparatorProtos.Comparator proto, boolean useCreator)
   throws IOException {
     String type = proto.getName();
-    String funcName = "parseFrom";
     byte [] value = proto.getSerializedComparator().toByteArray();
+    if (useCreator && USE_CREATOR.get()) {
+      Function<Object, Object> creator = COMPARATOR_CREATORS.get(type);
+      if (creator != null) {
+        try {
+          return (ByteArrayComparable) creator.apply(value);
+        } catch (Exception e) {
+          throw new DoNotRetryIOException(e);
+        }
+      }
+    }
+    String funcName = "parseFrom";
     try {
       Class<?> c = Class.forName(type, true, ClassLoaderHolder.CLASS_LOADER);
       Method parseFrom = c.getMethod(funcName, byte[].class);
@@ -1595,6 +1658,47 @@ public final class ProtobufUtil {
     }
   }
 
+
+  private static final Map<String, Function<Object, Object>> FILTER_CREATORS;
+
+  static {
+    FILTER_CREATORS = new HashMap<>();
+    try {
+      Set<? extends Class<? extends Filter>> classes =
+          ClassPath.from(ClassLoaderHolder.CLASS_LOADER).getAllClasses().stream().filter(
+                  clazz -> clazz.getPackageName().equalsIgnoreCase(Filter.class.getPackage().getName()))
+              .map(clazz -> clazz.load())
+              .filter(clazz -> !Modifier.isAbstract(clazz.getModifiers()))
+              .filter(clazz -> Filter.class.isAssignableFrom(clazz))
+              .map(clazz -> (Class<? extends Filter>) clazz)
+              .collect(Collectors.toSet());
+
+      MethodHandles.Lookup lookup = MethodHandles.lookup();
+      for (Class<? extends Filter> clazz : classes) {
+        try {
+          Method method = clazz.getMethod("parseFrom", byte[].class);
+          MethodHandle methodHandle = lookup.unreflect(method);
+          MethodType instantiatedMethodType = methodHandle.type();
+          CallSite site = LambdaMetafactory.metafactory(lookup, "apply",
+              MethodType.methodType(Function.class), MethodType.methodType(Object.class, Object.class), methodHandle, instantiatedMethodType);
+
+          FILTER_CREATORS.put(clazz.getName(), (Function<Object, Object>) site.getTarget().invoke());
+        } catch (NoSuchMethodException e) {
+          // pass
+        } catch (Throwable e) {
+          throw new RuntimeException(e);
+        }
+
+      }
+    } catch (IOException e) {
+      LOG.warn("Failed to load filter classes, will fallback on Class.forName at runtime", e);
+    }
+  }
+
+  public static Filter toFilter(FilterProtos.Filter proto) throws IOException {
+    return toFilter(proto, true);
+  }
+
   /**
    * Convert a protocol buffer Filter to a client Filter
    *
@@ -1602,9 +1706,22 @@ public final class ProtobufUtil {
    * @return the converted Filter
    */
   @SuppressWarnings("unchecked")
-  public static Filter toFilter(FilterProtos.Filter proto) throws IOException {
+  public static Filter toFilter(FilterProtos.Filter proto, boolean useCreator) throws IOException {
     String type = proto.getName();
-    final byte [] value = proto.getSerializedFilter().toByteArray();
+    final ByteString byteString = proto.getSerializedFilter();
+    if (useCreator) {
+      Function<Object, Object> creator = FILTER_CREATORS.get(type);
+      if (creator != null) {
+        try {
+          return (Filter) creator.apply(byteString.toByteArray());
+        } catch (Exception e) {
+          throw new DoNotRetryIOException(e);
+        }
+      }
+    }
+
+    final byte[] value = byteString.toByteArray();
+
     String funcName = "parseFrom";
     try {
       Class<?> c = Class.forName(type, true, ClassLoaderHolder.CLASS_LOADER);

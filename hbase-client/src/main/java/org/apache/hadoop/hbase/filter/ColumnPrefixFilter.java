@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import org.apache.hadoop.hbase.ByteBufferExtendedCell;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.PrivateCellUtil;
+import org.apache.hbase.thirdparty.com.google.protobuf.ByteString;
 import org.apache.yetus.audience.InterfaceAudience;
 import org.apache.hadoop.hbase.exceptions.DeserializationException;
 import org.apache.hadoop.hbase.shaded.protobuf.generated.FilterProtos;
@@ -127,7 +128,7 @@ public class ColumnPrefixFilter extends FilterBase {
    * @throws org.apache.hadoop.hbase.exceptions.DeserializationException
    * @see #toByteArray
    */
-  public static ColumnPrefixFilter parseFrom(final byte [] pbBytes)
+  public static Filter parseFrom(final byte [] pbBytes)
   throws DeserializationException {
     FilterProtos.ColumnPrefixFilter proto;
     try {
@@ -136,6 +137,10 @@ public class ColumnPrefixFilter extends FilterBase {
       throw new DeserializationException(e);
     }
     return new ColumnPrefixFilter(proto.getPrefix().toByteArray());
+  }
+
+  public static Filter parseFrom(ByteString byteString) throws DeserializationException {
+    return parseFrom(byteString.toByteArray());
   }
 
   /**
