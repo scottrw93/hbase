@@ -21,6 +21,8 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.util.ReflectionUtils;
 import org.apache.yetus.audience.InterfaceAudience;
+import java.util.concurrent.ExecutionException;
+import static org.apache.hadoop.hbase.client.MetricsConnection.CLIENT_SIDE_METRICS_ENABLED_KEY;
 
 /**
  * Factory to create an {@link RpcRetryingCaller}
@@ -34,22 +36,29 @@ public class RpcRetryingCallerFactory {
   private final ConnectionConfiguration connectionConf;
   private final RetryingCallerInterceptor interceptor;
   private final int startLogErrorsCnt;
+  private final MetricsConnection metrics;
+
   /* These below data members are UNUSED!!!*/
   private final boolean enableBackPressure;
   private ServerStatisticTracker stats;
 
   public RpcRetryingCallerFactory(Configuration conf) {
-    this(conf, RetryingCallerInterceptorFactory.NO_OP_INTERCEPTOR);
+    this(conf, RetryingCallerInterceptorFactory.NO_OP_INTERCEPTOR, null);
   }
 
   public RpcRetryingCallerFactory(Configuration conf, RetryingCallerInterceptor interceptor) {
+    this(conf, interceptor, null);
+  }
+
+  public RpcRetryingCallerFactory(Configuration conf, RetryingCallerInterceptor interceptor, MetricsConnection metrics){
     this.conf = conf;
     this.connectionConf = new ConnectionConfiguration(conf);
     startLogErrorsCnt = conf.getInt(AsyncProcess.START_LOG_ERRORS_AFTER_COUNT_KEY,
-        AsyncProcess.DEFAULT_START_LOG_ERRORS_AFTER_COUNT);
+      AsyncProcess.DEFAULT_START_LOG_ERRORS_AFTER_COUNT);
     this.interceptor = interceptor;
     enableBackPressure = conf.getBoolean(HConstants.ENABLE_CLIENT_BACKPRESSURE,
-        HConstants.DEFAULT_ENABLE_CLIENT_BACKPRESSURE);
+      HConstants.DEFAULT_ENABLE_CLIENT_BACKPRESSURE);
+    this.metrics = metrics;
   }
 
   /**
@@ -69,7 +78,7 @@ public class RpcRetryingCallerFactory {
       connectionConf.getPauseMillis(),
       connectionConf.getPauseMillisForServerOverloaded(),
       connectionConf.getRetriesNumber(),
-      interceptor, startLogErrorsCnt, rpcTimeout);
+      interceptor, startLogErrorsCnt, rpcTimeout, metrics);
   }
 
   /**
@@ -83,26 +92,35 @@ public class RpcRetryingCallerFactory {
       connectionConf.getPauseMillisForServerOverloaded(),
       connectionConf.getRetriesNumber(),
       interceptor, startLogErrorsCnt,
-      connectionConf.getRpcTimeout());
+      connectionConf.getRpcTimeout(), metrics);
+
+
+
   }
 
+  //// TODO(baugenreich) should i worry about the other instantiate usages?? for example this is used in HTableMultiplexer to create a new asyncProcess
   public static RpcRetryingCallerFactory instantiate(Configuration configuration) {
-    return instantiate(configuration, RetryingCallerInterceptorFactory.NO_OP_INTERCEPTOR, null);
+    return instantiate(configuration, RetryingCallerInterceptorFactory.NO_OP_INTERCEPTOR, null, null);
   }
 
   public static RpcRetryingCallerFactory instantiate(Configuration configuration,
       ServerStatisticTracker stats) {
-    return instantiate(configuration, RetryingCallerInterceptorFactory.NO_OP_INTERCEPTOR, stats);
+    return instantiate(configuration, RetryingCallerInterceptorFactory.NO_OP_INTERCEPTOR, stats, null);
   }
 
   public static RpcRetryingCallerFactory instantiate(Configuration configuration,
-      RetryingCallerInterceptor interceptor, ServerStatisticTracker stats) {
+    RetryingCallerInterceptor interceptor, ServerStatisticTracker stats){
+    return instantiate(configuration, interceptor, stats, null);
+  }
+
+  public static RpcRetryingCallerFactory instantiate(Configuration configuration,
+      RetryingCallerInterceptor interceptor, ServerStatisticTracker stats, MetricsConnection metrics) {
     String clazzName = RpcRetryingCallerFactory.class.getName();
     String rpcCallerFactoryClazz =
         configuration.get(RpcRetryingCallerFactory.CUSTOM_CALLER_CONF_KEY, clazzName);
     RpcRetryingCallerFactory factory;
     if (rpcCallerFactoryClazz.equals(clazzName)) {
-      factory = new RpcRetryingCallerFactory(configuration, interceptor);
+      factory = new RpcRetryingCallerFactory(configuration, interceptor, metrics);
     } else {
       factory = ReflectionUtils.instantiateWithCustomCtor(
           rpcCallerFactoryClazz, new Class[] { Configuration.class },
