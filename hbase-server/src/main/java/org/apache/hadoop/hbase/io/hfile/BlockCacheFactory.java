@@ -110,7 +110,7 @@ public final class BlockCacheFactory {
           + "we will remove the deprecated config.", DEPRECATED_BLOCKCACHE_BLOCKSIZE_KEY,
         BLOCKCACHE_BLOCKSIZE_KEY);
     }
-    FirstLevelBlockCache l1Cache = createFirstLevelCache(conf);
+    FirstLevelBlockCache l1Cache = null;//createFirstLevelCache(conf);
 
     boolean useExternal = conf.getBoolean(EXTERNAL_BLOCKCACHE_KEY, EXTERNAL_BLOCKCACHE_DEFAULT);
     if (useExternal) {
@@ -138,7 +138,7 @@ public final class BlockCacheFactory {
 
   private static FirstLevelBlockCache createFirstLevelCache(final Configuration c) {
     final long cacheSize = MemorySizeUtil.getOnHeapCacheSize(c);
-    if (cacheSize < 0) {
+    if (cacheSize <= 0) {
       return null;
     }
     String policy = c.get(BLOCKCACHE_POLICY_KEY, BLOCKCACHE_POLICY_DEFAULT);
