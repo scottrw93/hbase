@@ -104,10 +104,10 @@ public class HeapMemoryManager {
 
   private List<HeapMemoryTuneObserver> tuneObservers = new ArrayList<>();
 
-  HeapMemoryManager(BlockCache blockCache, FlushRequester memStoreFlusher,
+  HeapMemoryManager(ResizableBlockCache blockCache, FlushRequester memStoreFlusher,
                 Server server, RegionServerAccounting regionServerAccounting) {
     Configuration conf = server.getConfiguration();
-    this.blockCache = toResizableBlockCache(blockCache);
+    this.blockCache = blockCache;
     this.memStoreFlusher = memStoreFlusher;
     this.server = server;
     this.regionServerAccounting = regionServerAccounting;
@@ -117,14 +117,6 @@ public class HeapMemoryManager {
     this.heapOccupancyLowWatermark = conf.getFloat(HConstants.HEAP_OCCUPANCY_LOW_WATERMARK_KEY,
       HConstants.DEFAULT_HEAP_OCCUPANCY_LOW_WATERMARK);
     metricsHeapMemoryManager = new MetricsHeapMemoryManager();
-  }
-
-  private ResizableBlockCache toResizableBlockCache(BlockCache blockCache) {
-    if (blockCache instanceof CombinedBlockCache) {
-      return (ResizableBlockCache) ((CombinedBlockCache) blockCache).getFirstLevelCache();
-    } else {
-      return (ResizableBlockCache) blockCache;
-    }
   }
 
   private boolean doInit(Configuration conf) {

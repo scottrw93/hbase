@@ -111,11 +111,12 @@ public final class BlockCacheFactory {
         BLOCKCACHE_BLOCKSIZE_KEY);
     }
     FirstLevelBlockCache l1Cache = createFirstLevelCache(conf);
-    if (l1Cache == null) {
-      return null;
-    }
+
     boolean useExternal = conf.getBoolean(EXTERNAL_BLOCKCACHE_KEY, EXTERNAL_BLOCKCACHE_DEFAULT);
     if (useExternal) {
+      if (l1Cache == null) {
+        return null;
+      }
       BlockCache l2CacheInstance = createExternalBlockcache(conf);
       return l2CacheInstance == null ?
           l1Cache :
@@ -127,6 +128,9 @@ public final class BlockCacheFactory {
         // Non combined mode is off from 2.0
         LOG.warn(
             "From HBase 2.0 onwards only combined mode of LRU cache and bucket cache is available");
+      }
+      if (l1Cache == null) {
+        return bucketCache;
       }
       return bucketCache == null ? l1Cache : new CombinedBlockCache(l1Cache, bucketCache);
     }
