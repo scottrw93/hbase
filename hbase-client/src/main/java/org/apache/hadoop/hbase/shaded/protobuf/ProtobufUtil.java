@@ -126,9 +126,12 @@ import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.DynamicClassLoader;
 import org.apache.hadoop.hbase.util.ExceptionUtil;
 import org.apache.hadoop.hbase.util.Methods;
+import org.apache.hadoop.hbase.util.ReflectedFunctionCache;
 import org.apache.hadoop.hbase.util.VersionInfo;
 import org.apache.hadoop.ipc.RemoteException;
 import org.apache.yetus.audience.InterfaceAudience;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import org.apache.hbase.thirdparty.com.google.common.io.ByteStreams;
 import org.apache.hbase.thirdparty.com.google.gson.JsonArray;
@@ -227,6 +230,7 @@ import org.apache.hadoop.hbase.shaded.protobuf.generated.ZooKeeperProtos;
  */
 @InterfaceAudience.Private // TODO: some clients (Hive, etc) use this class
 public final class ProtobufUtil {
+  private static final Logger LOG = LoggerFactory.getLogger(ProtobufUtil.class);
 
   private ProtobufUtil() {
   }
@@ -1523,6 +1527,13 @@ public final class ProtobufUtil {
     return builder.build();
   }
 
+  private static final ReflectedFunctionCache<byte[], Filter> FILTERS =
+    new ReflectedFunctionCache<>(ClassLoaderHolder.CLASS_LOADER, Filter.class, byte[].class,
+      "parseFrom");
+  private static final ReflectedFunctionCache<byte[], ByteArrayComparable> COMPARATORS =
+    new ReflectedFunctionCache<>(ClassLoaderHolder.CLASS_LOADER, ByteArrayComparable.class,
+      byte[].class, "parseFrom");
+
   /**
    * Convert a protocol buffer Comparator to a ByteArrayComparable
    * @param proto the protocol buffer Comparator to convert
@@ -1532,9 +1543,15 @@ public final class ProtobufUtil {
   public static ByteArrayComparable toComparator(ComparatorProtos.Comparator proto)
     throws IOException {
     String type = proto.getName();
-    String funcName = "parseFrom";
     byte[] value = proto.getSerializedComparator().toByteArray();
+
     try {
+      ByteArrayComparable result = COMPARATORS.getAndCallByName(type, value);
+      if (result != null) {
+        return result;
+      }
+
+      String funcName = "parseFrom";
       Class<?> c = Class.forName(type, true, ClassLoaderHolder.CLASS_LOADER);
       Method parseFrom = c.getMethod(funcName, byte[].class);
       if (parseFrom == null) {
@@ -1555,8 +1572,14 @@ public final class ProtobufUtil {
   public static Filter toFilter(FilterProtos.Filter proto) throws IOException {
     String type = proto.getName();
     final byte[] value = proto.getSerializedFilter().toByteArray();
-    String funcName = "parseFrom";
+
     try {
+      Filter result = FILTERS.getAndCallByName(type, value);
+      if (result != null) {
+        return result;
+      }
+
+      String funcName = "parseFrom";
       Class<?> c = Class.forName(type, true, ClassLoaderHolder.CLASS_LOADER);
       Method parseFrom = c.getMethod(funcName, byte[].class);
       if (parseFrom == null) {
