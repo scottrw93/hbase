@@ -134,6 +134,7 @@ import org.apache.hadoop.hbase.regionserver.handler.OpenMetaHandler;
 import org.apache.hadoop.hbase.regionserver.handler.OpenPriorityRegionHandler;
 import org.apache.hadoop.hbase.regionserver.handler.OpenRegionHandler;
 import org.apache.hadoop.hbase.regionserver.handler.UnassignRegionHandler;
+import org.apache.hadoop.hbase.replication.regionserver.MetricsSink;
 import org.apache.hadoop.hbase.security.Superusers;
 import org.apache.hadoop.hbase.security.User;
 import org.apache.hadoop.hbase.security.access.AccessChecker;
@@ -322,6 +323,8 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
 
   // Request counter for rpc mutate
   final LongAdder rpcMutateRequestCount = new LongAdder();
+
+  private final MetricsSink metricsSink = new MetricsSink();
 
   // Server to handle client requests.
   final RpcServerInterface rpcServer;
@@ -2294,6 +2297,9 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
             entry.getSecond());
         }
       }
+      long ageLastAppliedOp = entries.get(entries.size() -1).getKey().getWriteTime();
+      LOG.info("Setting ageLastAppliedOp to " + ageLastAppliedOp);
+      metricsSink.setAgeOfLastAppliedOp(ageLastAppliedOp);
       return ReplicateWALEntryResponse.newBuilder().build();
     } catch (IOException ie) {
       throw new ServiceException(ie);
