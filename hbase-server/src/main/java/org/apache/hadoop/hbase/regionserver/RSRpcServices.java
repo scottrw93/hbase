@@ -2218,7 +2218,6 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
   @QosPriority(priority = HConstants.REPLAY_QOS)
   public ReplicateWALEntryResponse replay(final RpcController controller,
       final ReplicateWALEntryRequest request) throws ServiceException {
-    LOG.info("We are replaying " + request.getEntryList().size() + " stuff right here");
     long before = EnvironmentEdgeManager.currentTime();
     CellScanner cells = ((HBaseRpcController) controller).cellScanner();
     try {
@@ -2281,6 +2280,9 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
               throw new IOException(result[i].getExceptionMsg());
             }
           }
+          long ageLastAppliedOp = entries.get(entries.size() -1).getKey().getWriteTime();
+          LOG.info("Setting ageLastAppliedOp to " + ageLastAppliedOp);
+          metricsSink.setAgeOfLastAppliedOp(ageLastAppliedOp);
         }
       }
 
@@ -2296,9 +2298,6 @@ public class RSRpcServices implements HBaseRPCErrorHandler,
             entry.getSecond());
         }
       }
-      long ageLastAppliedOp = entries.get(entries.size() -1).getKey().getWriteTime();
-      LOG.info("Setting ageLastAppliedOp to " + ageLastAppliedOp);
-      metricsSink.setAgeOfLastAppliedOp(ageLastAppliedOp);
       return ReplicateWALEntryResponse.newBuilder().build();
     } catch (IOException ie) {
       throw new ServiceException(ie);
