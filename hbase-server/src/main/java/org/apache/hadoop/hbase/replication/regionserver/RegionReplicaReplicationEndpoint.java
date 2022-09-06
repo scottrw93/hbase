@@ -635,7 +635,6 @@ public class RegionReplicaReplicationEndpoint extends HBaseReplicationEndpoint {
         controller.setCellScanner(p.getSecond());
         ReplicateWALEntryResponse response = stub.replay(controller, p.getFirst());
         long ageLastAppliedOp = entriesArray[entriesArray.length -1].getKey().getWriteTime();
-        LOG.info("Setting ageLastAppliedOp to " + ageLastAppliedOp);
         metricsSink.setAgeOfLastAppliedOp(ageLastAppliedOp);
         return response;
       }
