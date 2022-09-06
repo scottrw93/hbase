@@ -598,6 +598,8 @@ public class RegionReplicaReplicationEndpoint extends HBaseReplicationEndpoint {
    */
   static class RegionReplicaReplayCallable extends
       RegionAdminServiceCallable<ReplicateWALEntryResponse> {
+    private final MetricsSink metricsSink = new MetricsSink();
+
     private final List<Entry> entries;
     private final byte[] initialEncodedRegionName;
     private final AtomicLong skippedEntries;
@@ -631,7 +633,11 @@ public class RegionReplicaReplicationEndpoint extends HBaseReplicationEndpoint {
             ReplicationProtbufUtil.buildReplicateWALEntryRequest(entriesArray, location
                 .getRegionInfo().getEncodedNameAsBytes(), null, null, null);
         controller.setCellScanner(p.getSecond());
-        return stub.replay(controller, p.getFirst());
+        ReplicateWALEntryResponse response = stub.replay(controller, p.getFirst());
+        long ageLastAppliedOp = entriesArray[entriesArray.length -1].getKey().getWriteTime();
+        LOG.info("Setting ageLastAppliedOp to " + ageLastAppliedOp);
+        metricsSink.setAgeOfLastAppliedOp(ageLastAppliedOp);
+        return response;
       }
 
       if (skip) {
