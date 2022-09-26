@@ -597,7 +597,7 @@ public class HFileOutputFormat2
   public static void configureIncrementalLoad(Job job, Table table, RegionLocator regionLocator)
       throws IOException {
     StringBuilder configString = new StringBuilder();
-    for(Entry<String, String> confItem  : table.getConfiguration()){
+    for(Entry<String, String> confItem  : job.getConfiguration()){
       configString.append(confItem.getKey() + "=" + confItem.getValue() + ",");
     }
     LOG.info("In configureIncrementalLoad — setting config {}", configString.toString());
