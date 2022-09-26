@@ -206,7 +206,11 @@ public class HFileOutputFormat2
     final Path outputDir = ((FileOutputCommitter)committer).getWorkPath();
     final Configuration conf = context.getConfiguration();
 
-    LOG.info("In createRecordWriter - reading config {}", conf.toString());
+
+    LOG.info("In createRecordWriter - reading config ...");
+    for(Entry<String, String> confItem  : conf){
+      LOG.info("{} = {} " , confItem.getKey(), confItem.getValue());
+    }
 
     final boolean writeMultipleTables =
       conf.getBoolean(MULTI_TABLE_HFILEOUTPUTFORMAT_CONF_KEY, false);
@@ -590,7 +594,10 @@ public class HFileOutputFormat2
    */
   public static void configureIncrementalLoad(Job job, Table table, RegionLocator regionLocator)
       throws IOException {
-    LOG.info("In configureIncrementalLoad — setting config {}", table.getConfiguration().toString());
+    LOG.info("In configureIncrementalLoad — setting config...");
+    for(Entry<String, String> confItem  : table.getConfiguration()){
+      LOG.info("{} = {} " , confItem.getKey(), confItem.getValue() );
+    }
     configureIncrementalLoad(job, table.getDescriptor(), regionLocator);
     configureRemoteCluster(job, table.getConfiguration());
   }
