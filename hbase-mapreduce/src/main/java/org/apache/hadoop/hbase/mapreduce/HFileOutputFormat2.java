@@ -606,7 +606,7 @@ public class HFileOutputFormat2
     configureRemoteCluster(job, table.getConfiguration());
 
     configString = new StringBuilder();
-    for(Entry<String, String> confItem  : table.getConfiguration()){
+    for(Entry<String, String> confItem  : job.getConfiguration()){
       configString.append(confItem.getKey() + "=" + confItem.getValue() + ",");
     }
     LOG.info("Leaving configureIncrementalLoad — config is {}", configString.toString());
