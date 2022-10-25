@@ -259,14 +259,20 @@ public class VerifyReplication extends Configured implements Tool {
           break;
         } else {
           // row only exists in peer table
-          RowFilter filter = ReflectionUtils.newInstance(rowFilterClazz);
-          if (filter.include(value.getRow())) {
+          if (getRowFilter().include(value.getRow())) {
             logFailRowAndIncreaseCounter(context, Counters.ONLY_IN_PEER_TABLE_ROWS,
               currentCompareRowInPeerTable);
           }
           currentCompareRowInPeerTable = replicatedScanner.next();
         }
       }
+    }
+
+    private RowFilter getRowFilter() {
+      if (rowFilterClazz == PassThroughFilter.class) {
+        return PassThroughFilter.impl();
+      }
+      return ReflectionUtils.newInstance(rowFilterClazz);
     }
 
     private void logFailRowAndIncreaseCounter(Context context, Counters counter, Result row) {
@@ -300,8 +306,8 @@ public class VerifyReplication extends Configured implements Tool {
     protected void cleanup(Context context) {
       if (replicatedScanner != null) {
         try {
+          RowFilter filter = getRowFilter();
           while (currentCompareRowInPeerTable != null) {
-            RowFilter filter = ReflectionUtils.newInstance(rowFilterClazz);
             if (filter.include(currentCompareRowInPeerTable.getRow())) {
               logFailRowAndIncreaseCounter(context, Counters.ONLY_IN_PEER_TABLE_ROWS,
                 currentCompareRowInPeerTable);
