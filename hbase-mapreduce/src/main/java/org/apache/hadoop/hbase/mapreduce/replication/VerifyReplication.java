@@ -47,6 +47,8 @@ import org.apache.hadoop.hbase.mapreduce.TableMapReduceUtil;
 import org.apache.hadoop.hbase.mapreduce.TableMapper;
 import org.apache.hadoop.hbase.mapreduce.TableSnapshotInputFormat;
 import org.apache.hadoop.hbase.mapreduce.TableSplit;
+import org.apache.hadoop.hbase.mapreduce.replication.filter.PassThroughFilter;
+import org.apache.hadoop.hbase.mapreduce.replication.filter.RowFilter;
 import org.apache.hadoop.hbase.replication.ReplicationException;
 import org.apache.hadoop.hbase.replication.ReplicationPeerConfig;
 import org.apache.hadoop.hbase.replication.ReplicationPeerStorage;
@@ -56,6 +58,7 @@ import org.apache.hadoop.hbase.snapshot.RestoreSnapshotHelper;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.CommonFSUtils;
 import org.apache.hadoop.hbase.util.Pair;
+import org.apache.hadoop.hbase.util.ReflectionUtils;
 import org.apache.hadoop.hbase.util.Threads;
 import org.apache.hadoop.hbase.zookeeper.ZKConfig;
 import org.apache.hadoop.hbase.zookeeper.ZKWatcher;
@@ -135,6 +138,7 @@ public class VerifyReplication extends Configured implements Tool {
     private ResultScanner replicatedScanner;
     private Result currentCompareRowInPeerTable;
     private int sleepMsBeforeReCompare;
+    private Class<? extends RowFilter> rowFilterClazz;
     private String delimiter = "";
     private boolean verbose = false;
     private int batch = -1;
@@ -153,6 +157,8 @@ public class VerifyReplication extends Configured implements Tool {
         throws IOException {
       if (replicatedScanner == null) {
         Configuration conf = context.getConfiguration();
+        rowFilterClazz = conf.getClass(NAME + ".rowFilterClass", PassThroughFilter.class,
+          RowFilter.class);
         sleepMsBeforeReCompare = conf.getInt(NAME +".sleepMsBeforeReCompare", 0);
         delimiter = conf.get(NAME + ".delimiter", "");
         verbose = conf.getBoolean(NAME +".verbose", false);
@@ -253,8 +259,11 @@ public class VerifyReplication extends Configured implements Tool {
           break;
         } else {
           // row only exists in peer table
-          logFailRowAndIncreaseCounter(context, Counters.ONLY_IN_PEER_TABLE_ROWS,
-            currentCompareRowInPeerTable);
+          RowFilter filter = ReflectionUtils.newInstance(rowFilterClazz);
+          if (filter.include(value.getRow())) {
+            logFailRowAndIncreaseCounter(context, Counters.ONLY_IN_PEER_TABLE_ROWS,
+              currentCompareRowInPeerTable);
+          }
           currentCompareRowInPeerTable = replicatedScanner.next();
         }
       }
@@ -292,8 +301,11 @@ public class VerifyReplication extends Configured implements Tool {
       if (replicatedScanner != null) {
         try {
           while (currentCompareRowInPeerTable != null) {
-            logFailRowAndIncreaseCounter(context, Counters.ONLY_IN_PEER_TABLE_ROWS,
-              currentCompareRowInPeerTable);
+            RowFilter filter = ReflectionUtils.newInstance(rowFilterClazz);
+            if (filter.include(currentCompareRowInPeerTable.getRow())) {
+              logFailRowAndIncreaseCounter(context, Counters.ONLY_IN_PEER_TABLE_ROWS,
+                currentCompareRowInPeerTable);
+            }
             currentCompareRowInPeerTable = replicatedScanner.next();
           }
         } catch (Exception e) {

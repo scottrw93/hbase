@@ -55,6 +55,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.apache.hbase.thirdparty.com.google.common.base.Throwables;
+import jdk.internal.org.jline.utils.Log;
 
 @InterfaceAudience.Private
 public class SyncTable extends Configured implements Tool {
@@ -69,6 +70,7 @@ public class SyncTable extends Configured implements Tool {
   static final String DRY_RUN_CONF_KEY = "sync.table.dry.run";
   static final String DO_DELETES_CONF_KEY = "sync.table.do.deletes";
   static final String DO_PUTS_CONF_KEY = "sync.table.do.puts";
+  static final String DO_SOURCE_PUTS_CONF_KEY = "sync.table.do.source.puts";
   static final String IGNORE_TIMESTAMPS = "sync.table.ignore.timestamps";
 
   Path sourceHashDir;
@@ -80,6 +82,7 @@ public class SyncTable extends Configured implements Tool {
   boolean dryRun;
   boolean doDeletes = true;
   boolean doPuts = true;
+  boolean doSourcePuts = true;
   boolean ignoreTimestamps;
 
   Counters counters;
@@ -154,6 +157,7 @@ public class SyncTable extends Configured implements Tool {
     jobConf.setBoolean(DRY_RUN_CONF_KEY, dryRun);
     jobConf.setBoolean(DO_DELETES_CONF_KEY, doDeletes);
     jobConf.setBoolean(DO_PUTS_CONF_KEY, doPuts);
+    jobConf.setBoolean(DO_SOURCE_PUTS_CONF_KEY, doSourcePuts);
     jobConf.setBoolean(IGNORE_TIMESTAMPS, ignoreTimestamps);
 
     TableMapReduceUtil.initTableMapperJob(targetTableName, tableHash.initScan(),
@@ -191,6 +195,7 @@ public class SyncTable extends Configured implements Tool {
     boolean dryRun;
     boolean doDeletes = true;
     boolean doPuts = true;
+    boolean doSourcePuts = true;
     boolean ignoreTimestamp;
 
     HashTable.TableHash sourceTableHash;
@@ -218,6 +223,7 @@ public class SyncTable extends Configured implements Tool {
       dryRun = conf.getBoolean(DRY_RUN_CONF_KEY, false);
       doDeletes = conf.getBoolean(DO_DELETES_CONF_KEY, true);
       doPuts = conf.getBoolean(DO_PUTS_CONF_KEY, true);
+      doSourcePuts = conf.getBoolean(DO_SOURCE_PUTS_CONF_KEY, true);
       ignoreTimestamp = conf.getBoolean(IGNORE_TIMESTAMPS, false);
 
       sourceTableHash = HashTable.TableHash.read(conf, sourceHashDir);
@@ -376,7 +382,13 @@ public class SyncTable extends Configured implements Tool {
           }
           context.getCounter(Counter.SOURCEMISSINGROWS).increment(1);
 
-          rowMatched = syncRowCells(context, nextTargetRow, EMPTY_CELL_SCANNER, targetCells);
+          if (doSourcePuts) {
+            rowMatched = syncRowCells(context, nextTargetRow, EMPTY_CELL_SCANNER, targetCells);
+          } else {
+            LOG.debug("Not syncing source table because doSourcePuts=false");
+            rowMatched = true;
+          }
+
           nextTargetRow = targetCells.nextRow();  // advance only target to next row
         } else {
           // current row is the same on both sides, compare cell by cell
@@ -828,6 +840,13 @@ public class SyncTable extends Configured implements Tool {
           ignoreTimestamps = Boolean.parseBoolean(cmd.substring(ignoreTimestampsKey.length()));
           continue;
         }
+
+        final String doSourcePutsKey = "--doSourcePuts=";
+        if (cmd.startsWith(doSourcePutsKey)) {
+          doSourcePuts = Boolean.parseBoolean(cmd.substring(doSourcePutsKey.length()));
+          continue;
+        }
+
 
         printUsage("Invalid argument '" + cmd + "'");
         return false;
